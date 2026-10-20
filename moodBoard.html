@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Mood board projektu — kolorystyka</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page-background: #ffffff;
+      --surface-background: #f8f9fb;
+      --tutor-card-background: #f3f4f6;
+      --tutor-card-hover-background: #dfe2e8;
+      --subject-tag-background: #e8eaee;
+      --level-primary-background: #c7ebcb;
+      --level-primary-border: #73b77d;
+      --level-secondary-background: #ffe69a;
+      --level-secondary-border: #d6b342;
+      --level-tertiary-background: #f4c0c3;
+      --level-tertiary-border: #c96f7a;
+      --text-color: #252a34;
+      --muted-color: #697180;
+      --border-color: #cbd1da;
+      --button-color: #5479b2;
+      --button-hover-color: #6f91c8;
+      --button-text: #ffffff;
+      --swatch-outline: #cbd1da;
+    }
+
+    .light-theme {
+      display: block;
+    }
+
+    .dark-theme {
+      display: none;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --page-background: #24252b;
+        --surface-background: #2d2e36;
+        --tutor-card-background: #2b2c33;
+        --tutor-card-hover-background: #2d2e36;
+        --subject-tag-background: var(--surface-background);
+        --text-color: #f0eff5;
+        --muted-color: #b4b2c0;
+        --border-color: #3a3b44;
+        --button-color: #c7b8f5;
+        --button-hover-color: #e8b8d0;
+        --button-text: #292333;
+        --swatch-outline: #777482;
+      }
+
+      .light-theme {
+        display: none;
+      }
+
+      .dark-theme {
+        display: block;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      padding: 56px 24px;
+      background: var(--page-background);
+      color: var(--text-color);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+      transition: background-color 180ms ease, color 180ms ease;
+    }
+
+    main {
+      width: min(100%, 760px);
+      margin: 0 auto;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--muted-color);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: 12px;
+      font-size: clamp(2rem, 6vw, 3rem);
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+    }
+
+    h2 {
+      margin-bottom: 8px;
+      font-size: 1.35rem;
+    }
+
+    .intro,
+    .section-description {
+      color: var(--muted-color);
+    }
+
+    .intro {
+      max-width: 58ch;
+      margin-bottom: 36px;
+    }
+
+    .palette {
+      padding: 24px;
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      background: var(--surface-background);
+    }
+
+    .tutor-section {
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    .level-tags {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin: 20px 0 24px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .level-tag {
+      display: inline-block;
+      padding: 6px 12px;
+      border: 2px solid;
+      border-radius: 999px;
+      color: #29302b;
+      font-size: 0.88rem;
+      font-weight: 650;
+    }
+
+    .level-tag--primary {
+      border-color: var(--level-primary-border);
+      background: var(--level-primary-background);
+    }
+
+    .level-tag--secondary {
+      border-color: var(--level-secondary-border);
+      background: var(--level-secondary-background);
+    }
+
+    .level-tag--tertiary {
+      border-color: var(--level-tertiary-border);
+      background: var(--level-tertiary-background);
+    }
+
+    .tutor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+      gap: 20px;
+    }
+
+    .tutor-card {
+      display: flex;
+      width: 100%;
+      height: 500px;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 4px;
+      border-radius: 14px;
+      background: var(--card-border-color, var(--border-color));
+      color: inherit;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background-color 180ms ease;
+    }
+
+    .tutor-card--primary {
+      --card-border-color: var(--level-primary-border);
+    }
+
+    .tutor-card--secondary {
+      --card-border-color: var(--level-secondary-border);
+    }
+
+    .tutor-card--tertiary {
+      --card-border-color: var(--level-tertiary-border);
+    }
+
+    .tutor-card--primary-secondary {
+      --card-border-color: transparent;
+      background: linear-gradient(
+        to bottom,
+        var(--level-primary-border) 0 50%,
+        var(--level-secondary-border) 50% 100%
+      );
+    }
+
+    .tutor-card--all-levels {
+      --card-border-color: transparent;
+      background: linear-gradient(
+        to bottom,
+        var(--level-primary-border) 0 33.333%,
+        var(--level-secondary-border) 33.333% 66.666%,
+        var(--level-tertiary-border) 66.666% 100%
+      );
+    }
+
+    .tutor-card-inner {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 10px;
+      background: var(--tutor-card-background);
+      transition: background-color 350ms ease;
+    }
+
+    .tutor-card:hover,
+    .tutor-card:focus-visible {
+      background-color: var(--card-border-color, var(--border-color));
+    }
+
+    .tutor-card:hover .tutor-card-inner,
+    .tutor-card:focus-visible .tutor-card-inner {
+      background: var(--tutor-card-hover-background);
+    }
+
+    .tutor-card:focus-visible {
+      outline: 3px solid var(--button-hover-color);
+      outline-offset: 3px;
+    }
+
+    .button-sample-wrap {
+      display: grid;
+      place-items: center;
+      margin-top: 20px;
+    }
+
+    .tag-sample-wrap {
+      margin-top: 20px;
+    }
+
+    .tag-sample {
+      display: inline-block;
+    }
+
+    .price-slider {
+      margin-top: 24px;
+      text-align: left;
+    }
+
+    .price-slider-heading {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 8px;
+      font-weight: 650;
+    }
+
+    .price-slider-values {
+      color: var(--muted-color);
+      font-variant-numeric: tabular-nums;
+      font-weight: 400;
+    }
+
+    .range-control {
+      position: relative;
+      height: 32px;
+      margin: 0 10px;
+      --range-start: 20%;
+      --range-end: 80%;
+    }
+
+    .range-track {
+      position: absolute;
+      top: 14px;
+      right: 0;
+      left: 0;
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(
+        to right,
+        var(--border-color) 0 var(--range-start),
+        var(--button-color) var(--range-start) var(--range-end),
+        var(--border-color) var(--range-end) 100%
+      );
+    }
+
+    .range-input {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 32px;
+      margin: 0;
+      appearance: none;
+      background: transparent;
+      pointer-events: none;
+    }
+
+    .range-input::-webkit-slider-runnable-track {
+      height: 4px;
+      background: transparent;
+    }
+
+    .range-input::-moz-range-track {
+      height: 4px;
+      background: transparent;
+    }
+
+    .range-input::-webkit-slider-thumb {
+      width: 20px;
+      height: 20px;
+      margin-top: -8px;
+      appearance: none;
+      border: 3px solid var(--page-background);
+      border-radius: 50%;
+      background: var(--button-color);
+      box-shadow: 0 0 0 1px var(--button-color);
+      pointer-events: auto;
+      cursor: grab;
+    }
+
+    .range-input::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border: 3px solid var(--page-background);
+      border-radius: 50%;
+      background: var(--button-color);
+      box-shadow: 0 0 0 1px var(--button-color);
+      pointer-events: auto;
+      cursor: grab;
+    }
+
+    .range-input:focus-visible {
+      outline: none;
+    }
+
+    .range-input:focus-visible::-webkit-slider-thumb {
+      box-shadow: 0 0 0 3px var(--button-hover-color);
+    }
+
+    .range-input:focus-visible::-moz-range-thumb {
+      box-shadow: 0 0 0 3px var(--button-hover-color);
+    }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      clip-path: inset(50%);
+    }
+
+    .tutor-photo {
+      display: block;
+      width: 100%;
+      height: 250px;
+      flex: 0 0 250px;
+      object-fit: cover;
+      object-position: top center;
+      background: var(--surface-background);
+    }
+
+    .tutor-details {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+    }
+
+    .tutor-rating {
+      margin-bottom: 0;
+    }
+
+    .subject-tags {
+      align-content: center;
+      flex: 1;
+      margin-top: 14px;
+    }
+
+    .tutor-name {
+      margin: 0 0 8px;
+      font-size: 1.15rem;
+      text-align: center;
+    }
+
+    .tutor-rating {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    .rating-stars {
+      display: inline-flex;
+      gap: 3px;
+      color: #b9bbc2;
+      font-size: 1.2rem;
+      letter-spacing: 0.02em;
+      line-height: 1;
+    }
+
+    .star--filled,
+    .star--half {
+      color: #f2d477;
+    }
+
+    .star--half {
+      background: linear-gradient(90deg, #f2d477 50%, #b9bbc2 50%);
+      background-clip: text;
+      color: transparent;
+    }
+
+    .rating-value {
+      color: var(--muted-color);
+      font-size: 0.9rem;
+    }
+
+    .subject-tags {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-right: 0;
+      margin-bottom: 0;
+      margin-left: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .subject-tag {
+      padding: 5px 10px;
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      background: var(--subject-tag-background);
+      color: var(--text-color);
+      font: inherit;
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+
+    .tutor-card .subject-tag,
+    .tag-sample {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .section-description {
+      margin-bottom: 8px;
+    }
+
+    .swatches {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .swatch {
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 0;
+    }
+
+    .swatch-color {
+      width: 48px;
+      height: 48px;
+      border: 2px solid var(--swatch-outline);
+      border-radius: 10px;
+      background: var(--color);
+    }
+
+    .swatch-name {
+      font-weight: 600;
+    }
+
+    .swatch-value {
+      color: var(--muted-color);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.9rem;
+    }
+
+    hr {
+      height: 1px;
+      margin: 0;
+      border: 0;
+      background: var(--border-color);
+    }
+
+    .button-sample {
+      display: inline-block;
+      padding: 10px 18px;
+      border: 0;
+      border-radius: 9px;
+      background: var(--button-color);
+      color: var(--button-text);
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+      transform-origin: center;
+      transition: transform 450ms ease, background-color 450ms ease;
+    }
+
+    .button-sample:hover,
+    .button-sample:focus-visible {
+      transform: scale(1.06);
+      background: var(--button-hover-color);
+      color: var(--button-text);
+    }
+
+    .button-sample:focus-visible {
+      outline: 3px solid var(--button-hover-color);
+      outline-offset: 3px;
+    }
+
+    .typography-sample {
+      margin-top: 24px;
+    }
+
+    .font-specimen {
+      margin-bottom: 4px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 1.8rem;
+      line-height: 1.2;
+    }
+
+    .font-specimen--mono {
+      margin-top: 20px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 1rem;
+    }
+
+    .font-name {
+      margin: 0;
+      color: var(--muted-color);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85rem;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    .mode-note {
+      margin: 24px 0 0;
+      color: var(--muted-color);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 520px) {
+      body {
+        padding: 36px 16px;
+      }
+
+      .palette {
+        padding: 20px 16px;
+      }
+
+      .swatch {
+        grid-template-columns: 40px minmax(0, 1fr);
+        gap: 12px;
+      }
+
+      .swatch-color {
+        width: 40px;
+        height: 40px;
+      }
+
+      .swatch-value {
+        grid-column: 2;
+        margin-top: -12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">Mood board projektu</p>
+      <h1>Kolorystyka</h1>
+      <p class="intro">
+        Spokojna, czytelna paleta z wyraźnymi akcentami. Wygląd strony automatycznie
+        dopasowuje się do jasnego lub ciemnego motywu ustawionego w przeglądarce.
+      </p>
+    </header>
+
+    <section class="palette" aria-label="Paleta kolorów dla aktywnego motywu">
+      <div class="light-theme" aria-labelledby="light-heading">
+        <h2 id="light-heading">Tryb jasny</h2>
+        <p class="section-description">Białe tło, delikatne obramowania i pastelowy niebieski akcent.</p>
+        <ul class="swatches">
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #ffffff" aria-hidden="true"></span>
+            <span class="swatch-name">Tło</span>
+            <span class="swatch-value">#FFFFFF</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #f3f4f6" aria-hidden="true"></span>
+            <span class="swatch-name">Tło karty korepetytora</span>
+            <span class="swatch-value">#F3F4F6</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #dfe2e8" aria-hidden="true"></span>
+            <span class="swatch-name">Tło karty po najechaniu</span>
+            <span class="swatch-value">#DFE2E8</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #cbd1da" aria-hidden="true"></span>
+            <span class="swatch-name">Obramowania</span>
+            <span class="swatch-value">#CBD1DA</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #5479b2" aria-hidden="true"></span>
+            <span class="swatch-name">Guziki — domyślny niebieski</span>
+            <span class="swatch-value">#5479B2</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #6f91c8" aria-hidden="true"></span>
+            <span class="swatch-name">Guziki — po najechaniu</span>
+            <span class="swatch-value">#6F91C8</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #5479b2" aria-hidden="true"></span>
+            <span class="swatch-name">Suwak ceny — zaznaczony zakres</span>
+            <span class="swatch-value">#5479B2</span>
+          </li>
+        </ul>
+        <div class="button-sample-wrap">
+          <button class="button-sample" type="button">Przykładowy guzik</button>
+        </div>
+        <div class="tag-sample-wrap">
+          <span class="subject-tag tag-sample">Przykładowy tag</span>
+        </div>
+        <div class="price-slider" data-price-slider>
+          <div class="price-slider-heading">
+            <span>Przykładowy zakres ceny</span>
+            <output class="price-slider-values" aria-live="polite"></output>
+          </div>
+          <div class="range-control">
+            <div class="range-track" aria-hidden="true"></div>
+            <label class="visually-hidden" for="light-price-min">Cena minimalna</label>
+            <input class="range-input range-input--lower" id="light-price-min" type="range" min="0" max="1000" step="50" value="200" aria-label="Cena minimalna">
+            <label class="visually-hidden" for="light-price-max">Cena maksymalna</label>
+            <input class="range-input range-input--upper" id="light-price-max" type="range" min="0" max="1000" step="50" value="800" aria-label="Cena maksymalna">
+          </div>
+        </div>
+      </div>
+
+      <div class="dark-theme" aria-labelledby="dark-heading">
+        <h2 id="dark-heading">Tryb ciemny</h2>
+        <p class="section-description">Ciemne, lekko złamane tło z lawendowym akcentem.</p>
+        <ul class="swatches">
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #24252b" aria-hidden="true"></span>
+            <span class="swatch-name">Tło</span>
+            <span class="swatch-value">#24252B</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #2b2c33" aria-hidden="true"></span>
+            <span class="swatch-name">Tło karty korepetytora</span>
+            <span class="swatch-value">#2B2C33</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #2d2e36" aria-hidden="true"></span>
+            <span class="swatch-name">Tło karty po najechaniu</span>
+            <span class="swatch-value">#2D2E36</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #3a3b44" aria-hidden="true"></span>
+            <span class="swatch-name">Obramowania</span>
+            <span class="swatch-value">#3A3B44</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #c7b8f5" aria-hidden="true"></span>
+            <span class="swatch-name">Guziki — domyślna lawenda</span>
+            <span class="swatch-value">#C7B8F5</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #e8b8d0" aria-hidden="true"></span>
+            <span class="swatch-name">Guziki — pastelowy róż po najechaniu</span>
+            <span class="swatch-value">#E8B8D0</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #c7b8f5" aria-hidden="true"></span>
+            <span class="swatch-name">Suwak ceny — zaznaczony zakres</span>
+            <span class="swatch-value">#C7B8F5</span>
+          </li>
+        </ul>
+        <div class="button-sample-wrap">
+          <button class="button-sample" type="button">Przykładowy guzik</button>
+        </div>
+        <div class="tag-sample-wrap">
+          <span class="subject-tag tag-sample">Przykładowy tag</span>
+        </div>
+        <div class="price-slider" data-price-slider>
+          <div class="price-slider-heading">
+            <span>Przykładowy zakres ceny</span>
+            <output class="price-slider-values" aria-live="polite"></output>
+          </div>
+          <div class="range-control">
+            <div class="range-track" aria-hidden="true"></div>
+            <label class="visually-hidden" for="dark-price-min">Cena minimalna</label>
+            <input class="range-input range-input--lower" id="dark-price-min" type="range" min="0" max="1000" step="50" value="200" aria-label="Cena minimalna">
+            <label class="visually-hidden" for="dark-price-max">Cena maksymalna</label>
+            <input class="range-input range-input--upper" id="dark-price-max" type="range" min="0" max="1000" step="50" value="800" aria-label="Cena maksymalna">
+          </div>
+        </div>
+      </div>
+
+      <div class="typography-sample" aria-labelledby="level-colors-heading">
+        <hr>
+        <h2 id="level-colors-heading">Kolory poziomów nauki i obramowań kart</h2>
+        <p class="section-description">Kolory tagów są stałe w obu motywach. Każde obramowanie karty używa bardziej nasyconego koloru obramowania odpowiadającego tagu.</p>
+        <ul class="swatches">
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #c7ebcb; border-color: #73b77d" aria-hidden="true"></span>
+            <span class="swatch-name">Podstawówka — tło tagu / obramowanie tagu i karty</span>
+            <span class="swatch-value">#C7EBCB / #73B77D</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #ffe69a; border-color: #d6b342" aria-hidden="true"></span>
+            <span class="swatch-name">Szkoła średnia — tło tagu / obramowanie tagu i karty</span>
+            <span class="swatch-value">#FFE69A / #D6B342</span>
+          </li>
+          <li><hr></li>
+          <li class="swatch">
+            <span class="swatch-color" style="--color: #f4c0c3; border-color: #c96f7a" aria-hidden="true"></span>
+            <span class="swatch-name">Studia — tło tagu / obramowanie tagu i karty</span>
+            <span class="swatch-value">#F4C0C3 / #C96F7A</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="typography-sample" aria-labelledby="typography-heading">
+        <hr>
+        <h2 id="typography-heading">Typografia</h2>
+        <p class="font-specimen">Aa Ąą Bb 123</p>
+        <p class="font-name">Inter, ui-sans-serif, system-ui, sans-serif</p>
+        <p class="font-specimen font-specimen--mono">Matematyka · Fizyka · Chemia</p>
+        <p class="font-name">Tagi przedmiotów i wartości — ui-monospace, Menlo, Consolas, monospace</p>
+      </div>
+    </section>
+
+    <p class="mode-note">Aktywny motyw strony wynika z ustawienia „wygląd” w systemie lub przeglądarce.</p>
+
+    <section class="palette tutor-section" aria-labelledby="tutor-section-heading">
+      <h2 id="tutor-section-heading">Karta korepetytora</h2>
+      <p class="section-description">Przykładowe karty z obramowaniami oznaczającymi poziomy nauczania.</p>
+
+      <ul class="level-tags" aria-label="Poziomy nauczania">
+        <li><span class="level-tag level-tag--primary">Podstawówka</span></li>
+        <li><span class="level-tag level-tag--secondary">Szkoła Średnia</span></li>
+        <li><span class="level-tag level-tag--tertiary">Studia</span></li>
+      </ul>
+
+      <div class="tutor-grid">
+        <a class="tutor-card tutor-card--primary" href="https://pl.wikipedia.org/wiki/Korepetycje" aria-labelledby="tutor-name-1">
+          <div class="tutor-card-inner">
+            <img class="tutor-photo" src="assets/placeholder_person.png" alt="Zdjęcie Jana Kowalskiego">
+            <div class="tutor-details">
+              <h3 class="tutor-name" id="tutor-name-1">Jan Kowalski</h3>
+              <div class="tutor-rating">
+                <span class="rating-stars" role="img" aria-label="Ocena: 3,5 na 5 gwiazdek"><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--half" aria-hidden="true">★</span><span aria-hidden="true">★</span></span>
+                <span class="rating-value">3,5</span>
+              </div>
+              <ul class="subject-tags" aria-label="Nauczane przedmioty"><li><span class="subject-tag">Matematyka</span></li><li><span class="subject-tag">Fizyka</span></li><li><span class="subject-tag">Chemia</span></li><li><span class="subject-tag">Informatyka</span></li><li><span class="subject-tag">Angielski</span></li><li><span class="subject-tag">Biologia</span></li><li><span class="subject-tag" aria-label="Więcej przedmiotów">...</span></li></ul>
+            </div>
+          </div>
+        </a>
+
+        <a class="tutor-card tutor-card--secondary" href="https://pl.wikipedia.org/wiki/Korepetycje" aria-labelledby="tutor-name-2">
+          <div class="tutor-card-inner">
+            <img class="tutor-photo" src="assets/placeholder_person2.png" alt="Zdjęcie Marka Nowaka">
+            <div class="tutor-details">
+              <h3 class="tutor-name" id="tutor-name-2">Marek Nowak</h3>
+              <div class="tutor-rating">
+                <span class="rating-stars" role="img" aria-label="Ocena: 4 na 5 gwiazdek"><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span aria-hidden="true">★</span></span>
+                <span class="rating-value">4,0</span>
+              </div>
+              <ul class="subject-tags" aria-label="Nauczane przedmioty"><li><span class="subject-tag">Matematyka</span></li><li><span class="subject-tag">Fizyka</span></li><li><span class="subject-tag">Informatyka</span></li></ul>
+            </div>
+          </div>
+        </a>
+
+        <a class="tutor-card tutor-card--tertiary" href="https://pl.wikipedia.org/wiki/Korepetycje" aria-labelledby="tutor-name-3">
+          <div class="tutor-card-inner">
+            <img class="tutor-photo" src="assets/placeholder_person3.png" alt="Zdjęcie Anny Wiśniewskiej">
+            <div class="tutor-details">
+              <h3 class="tutor-name" id="tutor-name-3">Anna Wiśniewska</h3>
+              <div class="tutor-rating">
+                <span class="rating-stars" role="img" aria-label="Ocena: 5 na 5 gwiazdek"><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span></span>
+                <span class="rating-value">5,0</span>
+              </div>
+              <ul class="subject-tags" aria-label="Nauczane przedmioty"><li><span class="subject-tag">Chemia</span></li><li><span class="subject-tag">Biologia</span></li></ul>
+            </div>
+          </div>
+        </a>
+
+        <a class="tutor-card tutor-card--primary-secondary" href="https://pl.wikipedia.org/wiki/Korepetycje" aria-labelledby="tutor-name-4">
+          <div class="tutor-card-inner">
+            <img class="tutor-photo" src="assets/placeholder_person4.png" alt="Zdjęcie Piotra Zielińskiego">
+            <div class="tutor-details">
+              <h3 class="tutor-name" id="tutor-name-4">Piotr Zieliński</h3>
+              <div class="tutor-rating">
+                <span class="rating-stars" role="img" aria-label="Ocena: 4,5 na 5 gwiazdek"><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--half" aria-hidden="true">★</span></span>
+                <span class="rating-value">4,5</span>
+              </div>
+              <ul class="subject-tags" aria-label="Nauczane przedmioty"><li><span class="subject-tag">Angielski</span></li><li><span class="subject-tag">Matematyka</span></li><li><span class="subject-tag">Fizyka</span></li></ul>
+            </div>
+          </div>
+        </a>
+
+        <a class="tutor-card tutor-card--all-levels" href="https://pl.wikipedia.org/wiki/Korepetycje" aria-labelledby="tutor-name-5">
+          <div class="tutor-card-inner">
+            <img class="tutor-photo" src="assets/placeholder_person5.png" alt="Zdjęcie Ewy Kamińskiej">
+            <div class="tutor-details">
+              <h3 class="tutor-name" id="tutor-name-5">Ewa Kamińska</h3>
+              <div class="tutor-rating">
+                <span class="rating-stars" role="img" aria-label="Ocena: 4,5 na 5 gwiazdek"><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--filled" aria-hidden="true">★</span><span class="star--half" aria-hidden="true">★</span></span>
+                <span class="rating-value">4,5</span>
+              </div>
+              <ul class="subject-tags" aria-label="Nauczane przedmioty"><li><span class="subject-tag">Matematyka</span></li><li><span class="subject-tag">Chemia</span></li><li><span class="subject-tag">Angielski</span></li><li><span class="subject-tag" aria-label="Więcej przedmiotów">...</span></li></ul>
+            </div>
+          </div>
+        </a>
+      </div>
+    </section>
+  </main>
+  <script>
+    document.querySelectorAll("[data-price-slider]").forEach((slider) => {
+      const control = slider.querySelector(".range-control");
+      const lowerInput = slider.querySelector(".range-input--lower");
+      const upperInput = slider.querySelector(".range-input--upper");
+      const output = slider.querySelector(".price-slider-values");
+      const minimumGap = Number(lowerInput.step);
+      const maximum = Number(lowerInput.max);
+
+      const updateRange = (changedInput) => {
+        let lowerValue = Number(lowerInput.value);
+        let upperValue = Number(upperInput.value);
+
+        if (upperValue - lowerValue < minimumGap) {
+          if (changedInput === lowerInput) {
+            lowerValue = upperValue - minimumGap;
+            lowerInput.value = String(lowerValue);
+          } else {
+            upperValue = lowerValue + minimumGap;
+            upperInput.value = String(upperValue);
+          }
+        }
+
+        control.style.setProperty("--range-start", `${(lowerValue / maximum) * 100}%`);
+        control.style.setProperty("--range-end", `${(upperValue / maximum) * 100}%`);
+        output.textContent = `${lowerValue}–${upperValue} zł`;
+        lowerInput.setAttribute("aria-valuetext", `${lowerValue} zł`);
+        upperInput.setAttribute("aria-valuetext", `${upperValue} zł`);
+      };
+
+      lowerInput.addEventListener("input", () => updateRange(lowerInput));
+      upperInput.addEventListener("input", () => updateRange(upperInput));
+      updateRange();
+    });
+  </script>
+</body>
+</html>
