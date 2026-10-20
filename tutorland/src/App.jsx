@@ -12,6 +12,8 @@ const levels = [
   { id: 'tertiary', label: 'Studia' },
 ]
 
+const LESSON_DURATION_MINUTES = 40
+
 const loggedInStudent = {
   firstName: 'Borys',
   lastName: 'Pudełko',
@@ -149,9 +151,17 @@ function formatDate(date, options = { day: 'numeric', month: 'long', year: 'nume
   return new Intl.DateTimeFormat('pl-PL', options).format(new Date(`${date}T12:00:00`))
 }
 
-function addHour(time) {
+function timeToMinutes(time) {
   const [hours, minutes] = time.split(':').map(Number)
-  return `${String((hours + 1) % 24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+  return hours * 60 + minutes
+}
+
+function formatTime(totalMinutes) {
+  const minutesInDay = 24 * 60
+  const normalizedMinutes = ((totalMinutes % minutesInDay) + minutesInDay) % minutesInDay
+  const hours = Math.floor(normalizedMinutes / 60)
+  const minutes = normalizedMinutes % 60
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
 
 function RangeFilter({ id, title, unit, bounds, step, value, onChange }) {
@@ -300,29 +310,38 @@ function getMonthDays(month) {
 function getAvailabilitySlots(tutor, date, availability, bookings) {
   const weekday = String(new Date(`${date}T12:00:00`).getDay())
   const ranges = availability.filter((range) => range.tutorId === tutor.tutorId && range.weekday === weekday)
-  const bookedTimes = bookings
-    .filter((booking) => booking.tutorId === tutor.tutorId && booking.date === date)
-    .map((booking) => booking.startTime)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const isPast = new Date(`${date}T12:00:00`) < today
+  const now = new Date()
+  const today = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-')
+  const currentMinutes = now.getHours() * 60 + now.getMinutes()
   const freeSlots = []
 
   for (const range of ranges) {
-    let hour = Number(range.startTime.slice(0, 2))
-    const endHour = Number(range.endTime.slice(0, 2))
-    while (hour < endHour) {
-      const startTime = `${String(hour).padStart(2, '0')}:00`
-      const now = new Date()
-      const isPastToday = date === [
-        now.getFullYear(),
-        String(now.getMonth() + 1).padStart(2, '0'),
-        String(now.getDate()).padStart(2, '0'),
-      ].join('-') && hour <= now.getHours()
-      if (!bookedTimes.includes(startTime) && !isPast && !isPastToday) {
-        freeSlots.push({ startTime, endTime: addHour(startTime) })
+    const rangeStart = timeToMinutes(range.startTime)
+    const rangeEnd = timeToMinutes(range.endTime)
+    for (
+      let startMinutes = rangeStart;
+      startMinutes + LESSON_DURATION_MINUTES <= rangeEnd;
+      startMinutes += LESSON_DURATION_MINUTES
+    ) {
+      const endMinutes = startMinutes + LESSON_DURATION_MINUTES
+      const isBooked = bookings.some((booking) => {
+        if (booking.tutorId !== tutor.tutorId || booking.date !== date) return false
+        const bookingStart = timeToMinutes(booking.startTime)
+        const bookingDuration = Number(booking.durationMinutes) || LESSON_DURATION_MINUTES
+        return startMinutes < bookingStart + bookingDuration && bookingStart < endMinutes
+      })
+      const isPast = date < today || (date === today && startMinutes <= currentMinutes)
+
+      if (!isBooked && !isPast) {
+        freeSlots.push({
+          startTime: formatTime(startMinutes),
+          endTime: formatTime(endMinutes),
+        })
       }
-      hour += 1
     }
   }
 
@@ -364,6 +383,8 @@ function Calendar({ tutor, availability, bookings, onBookingsChanged }) {
         studentEmail: loggedInStudent.email,
         date: selectedDate,
         startTime: selectedTime,
+        endTime: formatTime(timeToMinutes(selectedTime) + LESSON_DURATION_MINUTES),
+        durationMinutes: LESSON_DURATION_MINUTES,
         subject: selectedSubject,
       }
       const storageKey = 'tutorland-bookings'
@@ -391,7 +412,7 @@ function Calendar({ tutor, availability, bookings, onBookingsChanged }) {
           <p className="eyebrow">Znajdź dogodny termin</p>
           <h2>Umów lekcję</h2>
         </div>
-        <span className="calendar-duration">Lekcja trwa 60 min</span>
+        <span className="calendar-duration">Lekcja trwa 40 min</span>
       </div>
 
       <div className="calendar-booking-layout">
@@ -506,13 +527,7 @@ function Calendar({ tutor, availability, bookings, onBookingsChanged }) {
               <span>
                 {formatDate(bookingConfirmation.date)} o {bookingConfirmation.startTime} — {bookingConfirmation.subject}
               </span>
-              <p>Rezerwacja jest zapisana w tej przeglądarce.</p>
-              <button type="button">
-                E-mail do korepetytora
-              </button>
-              <button type="button">
-                E-mail do ucznia
-              </button>
+              <p>Termin zapisano. Szczegóły spotkania i powiadomienia będą dostępne w zakładce „Spotkania”.</p>
             </div>
           )}
         </section>

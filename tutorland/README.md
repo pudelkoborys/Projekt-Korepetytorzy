@@ -1,6 +1,14 @@
 # Tutorland
 
-Strona główna i profile korepetytorów Tutorland. Kolory tagów i kart nawiązują do `../moodBoard.html`.
+Tutorland to aplikacja do wyszukiwania korepetytorów, prezentowania ich ofert i rezerwowania lekcji. Docelowo uczniowie i korepetytorzy będą korzystać z własnych kont. Korepetytorzy ustawią przedmioty, poziomy nauczania, ceny, rok rozpoczęcia nauczania i dostępność.
+
+Rezerwacja planuje 40-minutowe spotkanie Zoom dla korepetytora i jednego ucznia. Szczegóły spotkań i powiadomienia będą dostępne na osobnej podstronie po zalogowaniu. Aplikacja nie wysyła wiadomości e-mail. Dane aplikacji będą przechowywane w plikach CSV przez lokalne API, bez bazy danych.
+
+## Dokumentacja produktu
+
+- [Dokumentacja produktu (PDF)](docs/tutorland-zakres-produktu.pdf)
+- [Edytowalne źródło dokumentacji (HTML)](docs/tutorland-zakres-produktu.html)
+- [Moodboard projektu (PDF)](../moodBoard.pdf)
 
 ## Uruchomienie
 
@@ -13,16 +21,18 @@ npm run build
 npm run lint
 ```
 
-## Pliki z danymi
+## Pliki z danymi prototypu
 
-Pliki CSV w `public/` można otwierać i edytować w arkuszu kalkulacyjnym:
+Pliki CSV w `public/` zawierają przykładowe dane i można je otwierać w arkuszu kalkulacyjnym:
 
 - `tutors.csv` — dane korepetytorów, adres e-mail, rok rozpoczęcia nauczania, poziomy, przedmioty i ścieżka do zdjęcia. `imagePath` obsługuje adresy `https://`/`http://` albo ścieżki do przykładowych zdjęć w `../assets/`. Każdy korepetytor ma unikalny `tutorId`, niezależny od adresu e-mail.
-- `students.csv` — imię, nazwisko, data urodzenia i e-mail ucznia.
-- `comments.csv` — komentarze powiązane przez `tutorId` i adres ucznia.
-- `tutor_availability.csv` — cotygodniowa dostępność danego korepetytora: dzień tygodnia (0 = niedziela, 1 = poniedziałek, …, 6 = sobota) i przedział godzin. Aplikacja dzieli przedział na lekcje po jednej godzinie.
+- `students.csv` — przykładowe dane uczniów.
+- `comments.csv` — przykładowe komentarze powiązane przez `tutorId` i adres ucznia.
+- `tutor_availability.csv` — cotygodniowa dostępność korepetytora: dzień tygodnia (0 = niedziela, 1 = poniedziałek, …, 6 = sobota) i przedział godzin. Prototyp dzieli przedział na lekcje po 40 minut.
 - `bookings.csv` — przykładowe zajęte terminy.
 
-Rezerwacje dokonane w demonstracyjnej wersji strony są zapisywane w `localStorage` przeglądarki. Przyciski e-mail w potwierdzeniu rezerwacji nie wykonują żadnej akcji i nie otwierają programu pocztowego.
+## Zakres prototypu i planowane funkcje
 
-Wartości `email` korepetytorów w przykładowym pliku są demonstracyjne i używają adresu podanego dla projektu. Przed użyciem poza lokalnym prototypem należy zastąpić je właściwymi adresami.
+Obecny frontend React/Vite zapisuje rezerwacje w `localStorage` przeglądarki i nie tworzy jeszcze spotkań przez Zoom API. Integracja Zoom, logowanie, API zapisujące CSV oraz podstrona „Spotkania” z powiadomieniami są opisane jako docelowy zakres w dokumentacji. OAuth do Zoom wymaga bezpiecznej konfiguracji lokalnej; tokenów ani sekretów nie należy umieszczać w CSV ani repozytorium.
+
+Przyciski e-mail w potwierdzeniu rezerwacji nie wykonują żadnej akcji i nie otwierają programu pocztowego.
