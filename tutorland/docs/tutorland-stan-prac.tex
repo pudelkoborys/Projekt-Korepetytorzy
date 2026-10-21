@@ -1,0 +1,73 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage{fontspec}
+\setmainfont{Liberation Sans}
+\usepackage{polyglossia}
+\setdefaultlanguage{polish}
+\usepackage[a4paper,margin=19mm,headheight=15pt]{geometry}
+\usepackage{xcolor,tabularx,booktabs,array,enumitem,fancyhdr,titlesec,hyperref}
+\definecolor{navy}{HTML}{263650}
+\definecolor{blue}{HTML}{5475A5}
+\definecolor{pale}{HTML}{EFF3F8}
+\definecolor{muted}{HTML}{5D6878}
+\hypersetup{colorlinks=true,urlcolor=blue}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{muted}Tutorland}
+\fancyhead[R]{\small\color{muted}Stan prac}
+\fancyfoot[C]{\small\color{muted}\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlength{\emergencystretch}{3em}
+\sloppy
+\setlist[itemize]{leftmargin=*,itemsep=3pt,topsep=3pt}
+\titleformat{\section}{\Large\bfseries\color{navy}}{\thesection.}{0.55em}{}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\begin{document}
+\begin{titlepage}
+\thispagestyle{empty}
+\vspace*{32mm}
+{\large\color{blue}\textbf{RAPORT POSTĘPU · 21 PAŹDZIERNIKA 2026}}
+\vspace{12mm}
+{\Huge\bfseries\color{navy}Tutorland\par}
+\vspace{4mm}
+{\LARGE Co już działa, a co zostało do zrobienia\par}
+\vspace{13mm}
+\color{blue}\rule{\textwidth}{2pt}
+\vspace{9mm}
+{\large Przegląd wykonany na podstawie aktualnego kodu aplikacji, plików danych i dokumentacji projektu.}
+\vfill
+\colorbox{pale}{\parbox{\dimexpr\textwidth-2\fboxsep\relax}{\textbf{W skrócie}\\
+Istnieje działający prototyp interfejsu do przeglądania korepetytorów, filtrowania ofert, sprawdzania terminów i zapisywania rezerwacji w przeglądarce. To jeszcze nie jest pełna platforma: brak logowania, serwera zapisującego dane, integracji Zoom i obsługi spotkań po rezerwacji.}}\par
+\vspace{12mm}
+{\small\color{muted}Dokument opisuje stan repozytorium w dniu przygotowania. „Działa” oznacza funkcję obecną w kodzie prototypu, a nie wdrożoną usługę produkcyjną.}
+\end{titlepage}
+
+\section{Co jest już zrobione}
+\begin{itemize}
+\item \textbf{Podstawowa aplikacja webowa} oparta na React i Vite, z układem strony dla katalogu oraz osobnym widokiem profilu korepetytora.
+\item \textbf{Katalog ofert:} karty korepetytorów pokazują opis, zdjęcie, przedmioty, poziomy nauczania, cenę, doświadczenie, ocenę i liczbę opinii.
+\item \textbf{Filtrowanie wyników:} można zawężać katalog po cenie, doświadczeniu, przedmiotach i poziomie nauczania; dostępne jest czyszczenie filtrów i stan braku wyników.
+\item \textbf{Profile korepetytorów:} widok szczegółów prezentuje ofertę, dane profilu, kalendarz dostępności oraz zapisane przykładowe opinie.
+\item \textbf{Dane demonstracyjne CSV:} aplikacja pobiera z katalogu publicznego przykładowe profile, uczniów, opinie, dostępność i rezerwacje. Odczyt CSV sprawdza wymagane kolumny i część błędnych wartości.
+\item \textbf{Kalendarz rezerwacji:} przeglądanie miesięcy, wybór dostępnego dnia i godziny oraz przedmiotu. Prototyp dzieli dostępność na lekcje 40-minutowe i ukrywa terminy przeszłe lub już zajęte.
+\item \textbf{Lokalny zapis rezerwacji:} po potwierdzeniu termin trafia do \texttt{localStorage} tej przeglądarki; pokazuje się potwierdzenie albo komunikat o błędzie.
+\item \textbf{Podstawy dostępności interfejsu:} widoki używają m.in. etykiet dla kontrolek, stanów dostępności i komunikatów dla czytników ekranu.
+\end{itemize}
+
+\section{Co pozostaje do zrobienia}
+\small
+\begin{tabularx}{\textwidth}{>{\bfseries}p{34mm}Y}
+\toprule
+Obszar & Brakujący element względem docelowej platformy\\
+\midrule
+Konta i role & Rejestracja, logowanie, odzyskiwanie dostępu oraz uprawnienia ucznia i korepetytora. Obecny nagłówek nie reprezentuje prawdziwej sesji użytkownika.\\
+Panel korepetytora & Edycja profilu, przedmiotów, poziomów i cen; zarządzanie cykliczną dostępnością i wyjątkami w kalendarzu.\\
+Zoom & Bezpieczne połączenie konta korepetytora przez OAuth, utworzenie i obsługa spotkania 40-minutowego. Integracji w kodzie jeszcze nie ma.\\
+Spotkania & Zalogowanej osobie potrzebny jest widok nadchodzących i zakończonych lekcji, szczegółów spotkania oraz linku dołączenia.\\
+Powiadomienia & Wewnętrzne powiadomienia o rezerwacji, zmianie lub odwołaniu. Zgodnie z założeniami projektu bez wysyłania e-maili.\\
+Opinie & Formularz dodawania oceny i komentarza dostępny uczniowi po jego zarezerwowanej lekcji. Obecnie wyświetlane są tylko przykładowe wpisy.\\
+\bottomrule
+\end{tabularx}
+\normalsize
+\end{document}

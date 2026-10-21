@@ -1,0 +1,71 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage{fontspec}
+\setmainfont{Liberation Sans}
+\usepackage{polyglossia}
+\setdefaultlanguage{polish}
+\usepackage[a4paper,margin=19mm,headheight=15pt]{geometry}
+\usepackage{xcolor,tabularx,booktabs,array,enumitem,fancyhdr,titlesec,hyperref}
+\definecolor{navy}{HTML}{263650}
+\definecolor{blue}{HTML}{5475A5}
+\definecolor{pale}{HTML}{EFF3F8}
+\definecolor{muted}{HTML}{5D6878}
+\hypersetup{colorlinks=true,urlcolor=blue}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{muted}Tutorland}
+\fancyhead[R]{\small\color{muted}Mapa stron}
+\fancyfoot[C]{\small\color{muted}\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlength{\emergencystretch}{3em}
+\sloppy
+\titleformat{\section}{\Large\bfseries\color{navy}}{\thesection.}{0.55em}{}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\begin{document}
+\begin{titlepage}
+\thispagestyle{empty}
+\vspace*{32mm}
+{\large\color{blue}\textbf{DOCELOWA STRUKTURA PRODUKTU}}
+\vspace{12mm}
+{\Huge\bfseries\color{navy}Tutorland\par}
+\vspace{4mm}
+{\LARGE Wszystkie potrzebne strony i widoki\par}
+\vspace{13mm}
+\color{blue}\rule{\textwidth}{2pt}
+\vspace{9mm}
+{\large Mapa publicznych ekranów oraz wspólnych widoków prywatnych w finalnej wersji projektu.}
+\vfill
+\colorbox{pale}{\parbox{\dimexpr\textwidth-2\fboxsep\relax}{\textbf{Jak czytać dokument}\\
+Obecny prototyp zawiera katalog, profil korepetytora, filtry i kalendarz rezerwacji. Pozostałe ekrany poniżej to docelowy zakres do zaprojektowania i wdrożenia; część pozycji może być widokiem lub stanem jednej strony, a nie osobną trasą URL.}}\par
+\vspace{12mm}
+{\small\color{muted}Struktura oparta na zakresie produktu Tutorland: uczniowie i korepetytorzy, rezerwacje 40-minutowe, Zoom, spotkania i opinie.}
+\end{titlepage}
+
+\section{Strony publiczne}
+\small
+\begin{tabularx}{\textwidth}{>{\bfseries}p{8mm}p{41mm}p{30mm}Y}
+\toprule
+Nr & Strona / przykładowa trasa & Dostęp & Zawartość i działanie\\
+\midrule
+1 & Strona główna i katalog\newline \url{/} lub \url{/korepetytorzy} & Każdy & Wprowadzenie do usługi, lista ofert, wyszukiwanie i filtry przedmiotów, poziomu, ceny, doświadczenia i dostępności; stan pustych wyników. To główny punkt wejścia.\\
+2 & Profil korepetytora\newline \url{/korepetytorzy/:slug} & Każdy & Opis, przedmioty, poziomy, cena, doświadczenie, oceny i opinie; kalendarz dostępności i początek rezerwacji. Przy zapisie użytkownik niezalogowany przechodzi do logowania, a po nim wraca do wyboru terminu.\\
+\bottomrule
+\end{tabularx}
+\normalsize
+
+\section{Konto i wspólne widoki prywatne}
+\small
+\begin{tabularx}{\textwidth}{>{\bfseries}p{8mm}p{41mm}p{30mm}Y}
+\toprule
+Nr & Strona / przykładowa trasa & Dostęp & Zawartość i działanie\\
+\midrule
+3 & Rejestracja\newline \url{/rejestracja} & Gość & Utworzenie konta i wybór roli: uczeń albo korepetytor; walidacja danych, zgoda na wymagane warunki i czytelny wynik.\\
+4 & Logowanie\newline \url{/logowanie} & Gość & Logowanie i bezpieczny powrót do strony lub rezerwacji, z której rozpoczęto logowanie.\\
+5 & Ustawienia konta\newline \url{/konto/ustawienia} & Zalogowany & Dane profilu, zmiana hasła i ustawień; użytkownik może edytować wyłącznie własne dane.\\
+6 & Spotkania\newline \url{/spotkania} & Uczeń / korepetytor & Lista przyszłych i zakończonych lekcji; data, godzina, przedmiot, status, dane drugiej strony, link Zoom oraz powiadomienia w aplikacji. Zawiera stany pustej listy i błędu.\\
+7 & Formularz opinii\newline \url{/spotkania/:id/opinia} lub stan na stronie spotkania & Uczeń po lekcji & Ocena 1–5 i komentarz do własnej zakończonej rezerwacji. Jedna opinia na rezerwację; formularz nieaktywny przed planowanym końcem lekcji.\\
+\bottomrule
+\end{tabularx}
+\normalsize
+\end{document}
