@@ -31,43 +31,51 @@
 \vspace{12mm}
 {\Huge\bfseries\color{navy}Tutorland\par}
 \vspace{4mm}
-{\LARGE Co już działa, a co zostało do zrobienia\par}
+{\LARGE Aktualny stan aplikacji\par}
 \vspace{13mm}
 \color{blue}\rule{\textwidth}{2pt}
 \vspace{9mm}
-{\large Przegląd wykonany na podstawie aktualnego kodu aplikacji, plików danych i dokumentacji projektu.}
+{\large Przegląd wykonanej aplikacji, lokalnego API, plików danych i dokumentacji projektu.}
 \vfill
 \colorbox{pale}{\parbox{\dimexpr\textwidth-2\fboxsep\relax}{\textbf{W skrócie}\\
-Istnieje działający prototyp interfejsu do przeglądania korepetytorów, filtrowania ofert, sprawdzania terminów i zapisywania rezerwacji w przeglądarce. To jeszcze nie jest pełna platforma: brak logowania, serwera zapisującego dane, integracji Zoom i obsługi spotkań po rezerwacji.}}\par
+Działa katalog publiczny, profile korepetytorów, logowanie i rejestracja z wyborem roli, lokalne API z prywatnym zapisem CSV, rezerwacje, panele ucznia i korepetytora oraz obsługa opinii. Integracja Zoom OAuth i tworzenie spotkań 40-minutowych są zaimplementowane po stronie aplikacji, ale wymagają skonfigurowania aplikacji Zoom i sekretów środowiskowych.}}\par
 \vspace{12mm}
-{\small\color{muted}Dokument opisuje stan repozytorium w dniu przygotowania. „Działa” oznacza funkcję obecną w kodzie prototypu, a nie wdrożoną usługę produkcyjną.}
+{\small\color{muted}Raport opisuje kod projektu. Nie oznacza wdrożenia publicznego serwera ani aktywnego połączenia z zewnętrznym kontem Zoom.}
 \end{titlepage}
 
-\section{Co jest już zrobione}
+\section{Zaimplementowane funkcje}
 \begin{itemize}
-\item \textbf{Podstawowa aplikacja webowa} oparta na React i Vite, z układem strony dla katalogu oraz osobnym widokiem profilu korepetytora.
-\item \textbf{Katalog ofert:} karty korepetytorów pokazują opis, zdjęcie, przedmioty, poziomy nauczania, cenę, doświadczenie, ocenę i liczbę opinii.
-\item \textbf{Filtrowanie wyników:} można zawężać katalog po cenie, doświadczeniu, przedmiotach i poziomie nauczania; dostępne jest czyszczenie filtrów i stan braku wyników.
-\item \textbf{Profile korepetytorów:} widok szczegółów prezentuje ofertę, dane profilu, kalendarz dostępności oraz zapisane przykładowe opinie.
-\item \textbf{Dane demonstracyjne CSV:} aplikacja pobiera z katalogu publicznego przykładowe profile, uczniów, opinie, dostępność i rezerwacje. Odczyt CSV sprawdza wymagane kolumny i część błędnych wartości.
-\item \textbf{Kalendarz rezerwacji:} przeglądanie miesięcy, wybór dostępnego dnia i godziny oraz przedmiotu. Prototyp dzieli dostępność na lekcje 40-minutowe i ukrywa terminy przeszłe lub już zajęte.
-\item \textbf{Lokalny zapis rezerwacji:} po potwierdzeniu termin trafia do \texttt{localStorage} tej przeglądarki; pokazuje się potwierdzenie albo komunikat o błędzie.
-\item \textbf{Podstawy dostępności interfejsu:} widoki używają m.in. etykiet dla kontrolek, stanów dostępności i komunikatów dla czytników ekranu.
+\item \textbf{Katalog publiczny:} karty i profile korepetytorów, wyszukiwanie po imieniu i nazwisku, filtr przedmiotu i poziomu nauczania oraz podgląd dostępnych terminów przez gości.
+\item \textbf{Konta i role:} osobne rejestracja i logowanie z wyborem ucznia lub korepetytora, sesja w ciasteczku \texttt{HttpOnly}, hasła przechowywane jako hashe scrypt oraz wylogowanie. Rola jest sprawdzana po stronie API.
+\item \textbf{Lokalne API:} serwer Node obsługuje konta, katalog, profile, dostępność, rezerwacje i opinie. Zmienne dane trafiają do prywatnego katalogu \texttt{server/data/}; pliki CSV nie są serwowane statycznie. Dane demonstracyjne znajdują się w \texttt{server/seed/}.
+\item \textbf{Rezerwacje:} uczeń może zapisać się na dostępny termin lekcji 40-minutowej. API weryfikuje rolę, przedmiot, dostępność, dni wolne, przeszłe godziny i nakładające się rezerwacje.
+\item \textbf{Panel ucznia:} lista zaplanowanych i zakończonych spotkań, linki do spotkań Zoom, historia własnych opinii oraz formularze dodawania, edycji i usuwania. Opinię można dodać po zakończonej lekcji; obowiązuje jedna aktywna opinia na ucznia i korepetytora.
+\item \textbf{Panel korepetytora:} edycja profilu, przedmiotów, poziomów i ceny; suwaki do ustawiania godzin dostępności w tygodniu; kalendarz liczby rezerwacji w bieżącym miesiącu i oznaczanie dni wolnych w kolejnym miesiącu.
+\item \textbf{Powiadomienia korepetytora:} zaplanowane i zakończone lekcje oraz opinie uczniów. Korepetytor może je przeglądać, ale nie edytować.
+\item \textbf{Połączenie Zoom:} przepływ OAuth korepetytora, szyfrowanie tokenów w prywatnym pliku, pobieranie zdjęcia profilu Zoom i tworzenie spotkań Zoom API trwających 40 minut. Uczeń otrzymuje link dołączenia, a link prowadzący jest dostępny tylko korepetytorowi.
+\item \textbf{Dane konta demonstracyjnego:} usunięto wskazane konto testowe z aplikacji i źródłowych danych demonstracyjnych. Uczniowie nie mają zdjęć profilowych. Nazwę poziomu zmieniono na „Szkoła Podstawowa”.
 \end{itemize}
 
-\section{Co pozostaje do zrobienia}
+\section{Konfiguracja i ograniczenia}
 \small
-\begin{tabularx}{\textwidth}{>{\bfseries}p{34mm}Y}
+\begin{tabularx}{\textwidth}{>{\bfseries}p{35mm}Y}
 \toprule
-Obszar & Brakujący element względem docelowej platformy\\
+Obszar & Stan i wymagane działanie\\
 \midrule
-Konta i role & Rejestracja, logowanie, odzyskiwanie dostępu oraz uprawnienia ucznia i korepetytora. Obecny nagłówek nie reprezentuje prawdziwej sesji użytkownika.\\
-Panel korepetytora & Edycja profilu, przedmiotów, poziomów i cen; zarządzanie cykliczną dostępnością i wyjątkami w kalendarzu.\\
-Zoom & Bezpieczne połączenie konta korepetytora przez OAuth, utworzenie i obsługa spotkania 40-minutowego. Integracji w kodzie jeszcze nie ma.\\
-Spotkania & Zalogowanej osobie potrzebny jest widok nadchodzących i zakończonych lekcji, szczegółów spotkania oraz linku dołączenia.\\
-Powiadomienia & Wewnętrzne powiadomienia o rezerwacji, zmianie lub odwołaniu. Zgodnie z założeniami projektu bez wysyłania e-maili.\\
-Opinie & Formularz dodawania oceny i komentarza dostępny uczniowi po jego zarezerwowanej lekcji. Obecnie wyświetlane są tylko przykładowe wpisy.\\
+Lokalny start & \texttt{npm run dev} uruchamia Vite i lokalne API. Zmienne dane pojawiają się w ignorowanym przez Git katalogu \texttt{server/data/}.\\
+Zoom OAuth & Wymaga aplikacji OAuth w Zoom Marketplace, poprawnego adresu powrotu \texttt{/api/zoom/callback}, zakresu odczytu profilu i tworzenia spotkań oraz wartości z pliku \texttt{.env.example} zapisanych lokalnie w \texttt{.env}. Bez sekretów Zoom aplikacja jawnie informuje, że połączenie nie jest skonfigurowane.\\
+Linki spotkań & Rezerwacja bez połączonego Zoom pozostaje w stanie oczekującym; po połączeniu konta serwer próbuje utworzyć oczekujące spotkania. Błędy Zoom są pokazywane w statusie rezerwacji.\\
+Poczta e-mail & Aplikacja nie wysyła e-maili; powiadomienia są dostępne w panelach kont.\\
+Środowisko & To lokalna aplikacja projektowa. Przed wdrożeniem publicznym potrzebna jest konfiguracja hostingu HTTPS, sekretów środowiskowych, kopii zapasowych danych i monitorowania.\\
 \bottomrule
 \end{tabularx}
 \normalsize
+
+\section{Sprawdzenia}
+\begin{itemize}
+\item Testy Node sprawdzają kodowanie CSV oraz podstawowe przepływy API: konta, sesje, dostęp do profilu, zapis rezerwacji, odrzucanie duplikatów i opinii przed odbytą lekcją.
+\item \texttt{npm run lint} przechodzi bez ostrzeżeń.
+\item \texttt{npm run build} generuje frontend produkcyjny.
+\end{itemize}
+
 \end{document}

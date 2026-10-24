@@ -34,10 +34,10 @@
 \vspace{13mm}
 \color{blue}\rule{\textwidth}{2pt}
 \vspace{9mm}
-{\large Mapa publicznych ekranów oraz wspólnych widoków prywatnych w finalnej wersji projektu.}
+{\large Mapa ekranów publicznych i widoków kont ucznia oraz korepetytora.}
 \vfill
 \colorbox{pale}{\parbox{\dimexpr\textwidth-2\fboxsep\relax}{\textbf{Jak czytać dokument}\\
-Obecny prototyp zawiera katalog, profil korepetytora, filtry i kalendarz rezerwacji. Pozostałe ekrany poniżej to docelowy zakres do zaprojektowania i wdrożenia; część pozycji może być widokiem lub stanem jednej strony, a nie osobną trasą URL.}}\par
+Mapa opisuje aktualne widoki aplikacji. Część formularzy i podsekcji jest stanem jednej strony; trasy są obsługiwane przez frontend React.}}\par
 \vspace{12mm}
 {\small\color{muted}Struktura oparta na zakresie produktu Tutorland: uczniowie i korepetytorzy, rezerwacje 40-minutowe, Zoom, spotkania i opinie.}
 \end{titlepage}
@@ -48,8 +48,8 @@ Obecny prototyp zawiera katalog, profil korepetytora, filtry i kalendarz rezerwa
 \toprule
 Nr & Strona / przykładowa trasa & Dostęp & Zawartość i działanie\\
 \midrule
-1 & Strona główna i katalog\newline \url{/} lub \url{/korepetytorzy} & Każdy & Wprowadzenie do usługi, lista ofert, wyszukiwanie i filtry przedmiotów, poziomu, ceny, doświadczenia i dostępności; stan pustych wyników. To główny punkt wejścia.\\
-2 & Profil korepetytora\newline \url{/korepetytorzy/:slug} & Każdy & Opis, przedmioty, poziomy, cena, doświadczenie, oceny i opinie; kalendarz dostępności i początek rezerwacji. Przy zapisie użytkownik niezalogowany przechodzi do logowania, a po nim wraca do wyboru terminu.\\
+1 & Strona główna i katalog\newline \url{/} & Każdy & Karty profili, wyszukiwanie po imieniu i nazwisku, filtry przedmiotów i poziomów oraz stany ładowania i braku wyników. Uczeń pozostaje w katalogu po zalogowaniu.\\
+2 & Profil korepetytora\newline \url{/?tutor=:tutorId} & Każdy & Opis, przedmioty, poziomy, cena, oceny, opinie i dostępne terminy. Gość może przeglądać profil i terminy, ale rezerwacja wymaga konta ucznia.\\
 \bottomrule
 \end{tabularx}
 \normalsize
@@ -60,11 +60,12 @@ Nr & Strona / przykładowa trasa & Dostęp & Zawartość i działanie\\
 \toprule
 Nr & Strona / przykładowa trasa & Dostęp & Zawartość i działanie\\
 \midrule
-3 & Rejestracja\newline \url{/rejestracja} & Gość & Utworzenie konta i wybór roli: uczeń albo korepetytor; walidacja danych, zgoda na wymagane warunki i czytelny wynik.\\
-4 & Logowanie\newline \url{/logowanie} & Gość & Logowanie i bezpieczny powrót do strony lub rezerwacji, z której rozpoczęto logowanie.\\
-5 & Ustawienia konta\newline \url{/konto/ustawienia} & Zalogowany & Dane profilu, zmiana hasła i ustawień; użytkownik może edytować wyłącznie własne dane.\\
-6 & Spotkania\newline \url{/spotkania} & Uczeń / korepetytor & Lista przyszłych i zakończonych lekcji; data, godzina, przedmiot, status, dane drugiej strony, link Zoom oraz powiadomienia w aplikacji. Zawiera stany pustej listy i błędu.\\
-7 & Formularz opinii\newline \url{/spotkania/:id/opinia} lub stan na stronie spotkania & Uczeń po lekcji & Ocena 1–5 i komentarz do własnej zakończonej rezerwacji. Jedna opinia na rezerwację; formularz nieaktywny przed planowanym końcem lekcji.\\
+3 & Rejestracja\newline \url{/register} & Gość & Utworzenie konta z wyborem roli ucznia lub korepetytora oraz walidacją danych.\\
+4 & Logowanie\newline \url{/login} & Gość & Logowanie z wyborem roli konta. Po logowaniu użytkownik trafia do odpowiedniego panelu lub wraca do strony profilu.\\
+5 & Spotkania i powiadomienia\newline \url{/notifications} & Uczeń / korepetytor & Własne nadchodzące i zakończone spotkania, status oraz link Zoom. Uczeń zarządza opiniami, korepetytor widzi rezerwacje i nowe opinie.\\
+6 & Panel profilu i dostępności\newline \url{/profile} & Korepetytor & Edycja własnego profilu, ceny, przedmiotów i poziomów; tygodniowe godziny przez suwaki, kalendarz rezerwacji i dni wolne na kolejny miesiąc.\\
+7 & Opinia\newline Formularz w \url{/notifications} & Uczeń po lekcji & Ocena 1–5 oraz komentarz. Jedna aktywna opinia na korepetytora; można ją edytować, usunąć i po usunięciu dodać ponownie.\\
+8 & Połączenie z Zoom\newline \url{/api/zoom/connect} i \url{/api/zoom/callback} & Korepetytor & OAuth konta Zoom, pobranie dostępnego zdjęcia profilowego i utworzenie 40-minutowych spotkań. Wymaga konfiguracji aplikacji Zoom na serwerze.\\
 \bottomrule
 \end{tabularx}
 \normalsize
