@@ -2,16 +2,17 @@
 
 Tutorland to aplikacja do wyszukiwania korepetytorów, prezentowania ich ofert i rezerwowania lekcji. Uczniowie i korepetytorzy korzystają z kont o oddzielnych rolach. Korepetytorzy mogą zarządzać profilem, przedmiotami, poziomami nauczania i dostępnością.
 
-Rezerwacja obejmuje 40-minutowe spotkanie Zoom ucznia i korepetytora. Spotkania i powiadomienia są dostępne po zalogowaniu. Aplikacja nie wysyła wiadomości e-mail. Dane są zapisywane przez lokalne API w prywatnych plikach CSV, bez bazy danych.
+Rezerwacja obejmuje 40-minutowe spotkanie Zoom ucznia i korepetytora. Spotkania i powiadomienia są dostępne po zalogowaniu. Aplikacja nie wysyła wiadomości e-mail.
 
 ## Dokumentacja
 
-- [Mapa stron (PDF)](docs/tutorland-mapa-stron.pdf)
-- [Raport stanu prac (PDF)](docs/tutorland-stan-prac.pdf)
-- [Dokumentacja produktu (PDF)](docs/tutorland-dokumentacja.pdf)
+- [Mapa stron (PDF)](../docs/tutorland/tutorland-mapa-stron.pdf)
+- [Raport stanu prac (PDF)](../docs/tutorland/tutorland-stan-prac.pdf)
+- [Dokumentacja produktu (PDF)](../docs/tutorland/tutorland-dokumentacja.pdf)
+- [Przekazanie projektu dla kolejnego asystenta (TXT)](../PRZEKAZANIE_PROJEKTU.txt)
 - [Moodboard projektu (PDF)](../moodBoard.pdf)
 
-## Uruchomienie
+## Rozwój lokalny
 
 W katalogu `tutorland`:
 
@@ -25,16 +26,33 @@ npm run build
 
 `npm run dev` uruchamia frontend Vite pod `http://localhost:5173` i lokalne API na porcie `3001`. `npm start` uruchamia samo API. Dane API są zapisywane do `server/data/` i nie są serwowane jako pliki statyczne.
 
-## Zoom OAuth
+Lokalne API Node.js nadal używa CSV i służy do pracy developerskiej. Wdrożona wersja używa PHP i MySQL; oba backendy udostępniają frontendowi te same ścieżki `/api/...`.
 
-Połączenie konta Zoom wymaga aplikacji OAuth skonfigurowanej w Zoom Marketplace. Skopiuj `.env.example` do `.env` i uzupełnij identyfikator oraz sekret aplikacji Zoom. Przyznaj aplikacji zakresy `user:read:user`, `user:read:email` oraz `meeting:write:meeting`, potrzebne do odczytu profilu, dopasowania adresu e-mail i tworzenia spotkań. Ustaw adres powrotu aplikacji na `APP_ORIGIN/api/zoom/callback` (domyślnie `http://localhost:5173/api/zoom/callback`). `APP_ORIGIN` musi używać dokładnie tego samego hosta i portu, pod którym otwierasz stronę (`localhost` i `127.0.0.1` są różnymi hostami); ten sam pełny adres callbacku musi być zapisany w konfiguracji Zoom. Jeśli Vite uruchomi się na innym porcie, ustaw odpowiednie `APP_ORIGIN` i ten sam adres w konfiguracji Zoom. Klucz szyfrowania tokenów wygeneruj poleceniem `openssl rand -hex 32` i zapisz jako `ZOOM_TOKEN_ENCRYPTION_KEY`. Nie zapisuj sekretów w CSV ani repozytorium.
+## Wdrożenie na tutorland.infinityfreeapp.com
 
-Po skonfigurowaniu integracji strona logowania udostępnia „Zaloguj przez Zoom”. Logowanie weryfikuje adres e-mail zwrócony przez Zoom i wpuszcza do istniejącego konta Tutorland o tej samej roli; samo logowanie Zoom nie zakłada kont automatycznie. Podczas rejestracji korepetytora oraz logowania hasłem konto korepetytora bez połączonego Zoom jest przekierowywane do autoryzacji, a połączenie można też uruchomić później z panelu profilu. Dla korepetytorów obraz `pic_url` pobrany z profilu Zoom jest ustawiany jako zdjęcie profilu Tutorland. Tokeny korepetytora są szyfrowane na serwerze; tokeny ucznia nie są zapisywane. Bez identyfikatora i sekretu aplikacji Zoom oraz klucza szyfrowania aplikacja nie może autoryzować kont ani utworzyć spotkań.
+InfinityFree udostępnia PHP i MySQL, dlatego produkcyjne API znajduje się w `public/api/index.php`. Nie uruchamiaj tam `npm start` ani nie wysyłaj `node_modules`. Backend developerski Node.js i pliki CSV pozostają do pracy lokalnej; wdrożenie używa bazy MySQL.
 
-Spotkanie jest planowane na 40 minut w strefie `Europe/Warsaw`. Jeżeli korepetytor nie ma połączonego konta Zoom, rezerwacja zostaje zachowana ze statusem oczekującym. Po połączeniu konta serwer spróbuje utworzyć oczekujące i wcześniejsze nieudane spotkania. Uczeń otrzymuje link do dołączenia, a link prowadzący jest dostępny wyłącznie korepetytorowi.
+1. **Nie wpisuj komend w panelu hostingu.** Hosting nie potrzebuje terminala: gotowa strona znajduje się już w `dist/`. Jeżeli kiedyś zmienisz kod i trzeba będzie zbudować nową wersję, polecenia `npm install` i `npm run build` uruchom lokalnie w VS Code: otwórz folder `tutorland`, wybierz **Terminal → Nowy terminal** i wpisz je w terminalu na swoim komputerze.
+2. W menedżerze plików hostingu albo przez FTP wgraj **zawartość** lokalnego katalogu `tutorland/dist/` do `htdocs` domeny. Włącz pokazywanie ukrytych plików i upewnij się, że wgrały się pliki `.htaccess` z `dist/` i `dist/api/`. Nie wgrywaj `node_modules`, `server/data`, `.env` ani całego repozytorium. Jeżeli `dist/` nie ma na komputerze, lokalnie otwórz terminal VS Code w folderze `tutorland` i uruchom `npm install`, a następnie `npm run build`.
+3. W phpMyAdmin wybierz utworzoną bazę danych i zaimportuj zewnętrzny plik `tutorland-database.sql`. Plik nie zawiera hasła ani poleceń tworzących bazę; tabele są tworzone w bazie wybranej w phpMyAdmin.
+4. W katalogu `htdocs/api/` skopiuj `config.example.php` jako `config.local.php`. Wypełnij dane MySQL dokładnie z sekcji MySQL Connection Details panelu hostingu: host, nazwę bazy, użytkownika i hasło. Nie wpisuj tych wartości do repozytorium ani nie przesyłaj ich w rozmowie.
+5. W `config.local.php` pozostaw `app_origin` jako `https://tutorland.infinityfreeapp.com`. Wprowadź tam Client ID, Client Secret i nowy klucz szyfrowania Zoom. Wygeneruj ten klucz lokalnie poleceniem `openssl rand -hex 32`; nie używaj ponownie hasła do bazy.
+6. Po włączeniu HTTPS sprawdź `https://tutorland.infinityfreeapp.com/api/auth/me` — niezalogowany użytkownik powinien otrzymać JSON z `"user":null`. Jeśli API zgłasza brak konfiguracji, sprawdź nazwę i lokalizację `api/config.local.php`; błędy połączenia z bazą wymagają porównania danych z panelem.
 
-## Dane aplikacji
+### Ustawienia aplikacji Zoom
 
-Pliki CSV w `server/seed/` mają nagłówki, ale nie zawierają kont, demonstracyjnych profili, dostępności ani rezerwacji. Przy pierwszym uruchomieniu API są kopiowane do prywatnego katalogu `server/data/`; katalog pozostaje pusty, dopóki nie zarejestrują się nowi korepetytorzy. Zarejestrowane konta, hashe haseł, sesje, dane prywatne i rezerwacje nie są dostępne przez statyczny adres URL. Hasła są przechowywane jako hashe scrypt, sesja jest w ciasteczku `HttpOnly`, a tokeny Zoom są szyfrowane kluczem lokalnym.
+W aplikacji OAuth w Zoom Marketplace ustaw:
 
-Gdy żaden korepetytor nie ma profilu, katalog wyświetla informację, że nie ma jeszcze dostępnych korepetytorów. Po utworzeniu nowych kont działają rezerwacje terminów, spotkania Zoom oraz opinie. Uczeń może dodać jedną aktywną opinię na korepetytora po odbytej lekcji, edytować ją, usunąć i później dodać ponownie. Korepetytor może edytować własny profil i plan dostępności, oznaczać dni wolne oraz przeglądać spotkania i opinie.
+- **App URL:** `https://tutorland.infinityfreeapp.com`
+- **Development Redirect URL / OAuth Redirect URL:** `https://tutorland.infinityfreeapp.com/api/zoom/callback`
+- **OAuth Allow List:** `https://tutorland.infinityfreeapp.com/api/zoom/callback` (pełny adres callbacku; Zoom dopuszcza też bazowy adres `https://tutorland.infinityfreeapp.com`)
+- **Client ID i Client Secret:** wpisz do `api/config.local.php` na hostingu; nigdy nie publikuj ich w repozytorium.
+- **Zakresy:** `user:read:user`, `user:read:email` i `meeting:write:meeting`.
+
+Adres redirectu musi być identyczny w Zoom i w `app_origin` konfiguracji hostingu (łącznie z HTTPS, nazwą domeny i ścieżką). Allow List może zawierać pełny adres callbacku lub jego bazowy adres HTTPS. Jeśli Allow List jest wyszarzona, ale zawiera już dokładnie docelowy adres HTTPS, wpis jest poprawny i nie trzeba go zmieniać. Jeżeli wyszarzona lista nadal zawiera `localhost`, sama zmiana OAuth Redirect URL nie gwarantuje dodania domeny produkcyjnej do Allow List. Nie klikaj wtedy „Add App” i nie zakładaj, że lista aktualizuje się automatycznie — sprawdź, czy obok wpisu jest przycisk dodawania; jeśli cała sekcja jest zablokowana, potrzebny jest zrzut ekranu sekcji (bez sekretów) lub pomoc Zoom Support. Kod aplikacji nie może odblokować ustawień w Marketplace. Callback produkcyjny nie zadziała z `localhost`. Można przygotować adresy przed przeniesieniem aplikacji, ale OAuth zacznie działać dopiero po wgraniu strony, włączeniu HTTPS i ustawieniu konfiguracji.
+
+Darmowy hosting może ograniczać połączenia wychodzące z PHP do usług zewnętrznych. Przepływ Zoom wymaga, aby serwer mógł wykonać połączenia HTTPS do `zoom.us` i `api.zoom.us`, a PHP miało rozszerzenie cURL. Po wdrożeniu sprawdź osobno autoryzację Zoom i utworzenie spotkania; same poprawne adresy w Marketplace nie dowodzą, że hosting dopuszcza takie połączenia.
+
+Sekretna konfiguracja PHP jest ignorowana przez Git, a `public/api/.htaccess` blokuje jej pobranie przez HTTP. Zachowaj bezpieczną kopię klucza szyfrowania Zoom: bez tego samego klucza zapisane tokeny Zoom nie będą mogły zostać odszyfrowane.
+
+Schema SQL tworzy puste tabele. Aktualny katalog nie ma migracji danych runtime CSV do MySQL; konta, profile i rezerwacje należy założyć ponownie po wdrożeniu. Nie importuj prywatnego `server/data/` na hosting.

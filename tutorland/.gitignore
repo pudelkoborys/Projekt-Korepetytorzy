@@ -15,6 +15,7 @@ server/data/
 .env
 .env.*
 !.env.example
+public/api/config.local.php
 
 # Editor directories and files
 .vscode/*
