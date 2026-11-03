@@ -1,29 +1,23 @@
 import './load-env.js'
-import { createHash, randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
-import { createServer } from 'node:http'
-import { promisify } from 'node:util'
-import { initializeStorage, readCsv, updateCsv } from './storage.js'
 import {
-  createZoomMeeting,
-  exchangeZoomCode,
-  hasZoomConnection,
-  saveZoomConnection,
-  zoomAuthorizationUrl,
-  zoomConfigured,
-} from './zoom.js'
+  createHash,
+  pbkdf2Sync,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'node:crypto'
+import { createServer } from 'node:http'
+import { initializeStorage, readCsv, updateCsv } from './storage.js'
+import { removeZoomConnection } from './zoom.js'
+import { DEFAULT_SUBJECTS, formatSubjectName, subjectKey } from '../src/subjects.js'
 
-const scrypt = promisify(scryptCallback)
 const port = Number(process.env.API_PORT ?? 3001)
 const cookieName = 'tutorland_session'
 const sessionDuration = 14 * 24 * 60 * 60 * 1000
+const passwordIterations = 310_000
+const dummyPasswordHash = 'pbkdf2-sha256$310000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 const lessonDuration = 40
-const loginAttempts = new Map()
 const levels = new Set(['primary', 'secondary', 'tertiary'])
-const lessonSubjects = new Set([
-  'Matematyka', 'Fizyka', 'Chemia', 'Informatyka', 'Angielski', 'Biologia',
-  'Polski', 'Historia', 'Geografia', 'WOS', 'Filozofia', 'Ekonomia',
-])
-
 class HttpError extends Error {
   constructor(status, message) {
     super(message)
@@ -35,12 +29,31 @@ function hash(value) {
   return createHash('sha256').update(value).digest('hex')
 }
 
-function safeReturnTo(value, fallback = '/') {
-  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
-    return fallback
-  }
-  const target = new URL(value, 'http://localhost')
-  return `${target.pathname}${target.search}${target.hash}`
+function makePasswordHash(password) {
+  const salt = randomBytes(16)
+  const derivedKey = pbkdf2Sync(password, salt, passwordIterations, 32, 'sha256')
+  return `pbkdf2-sha256$${passwordIterations}$${salt.toString('base64')}$${derivedKey.toString('base64')}`
+}
+
+function verifyPassword(password, storedHash = '') {
+  const parts = storedHash.split('$')
+  const iterations = Number(parts[1])
+  const salt = parts[0] === 'pbkdf2-sha256' && iterations === passwordIterations
+    ? Buffer.from(parts[2] ?? '', 'base64')
+    : Buffer.alloc(0)
+  const expected = parts[0] === 'pbkdf2-sha256' && iterations === passwordIterations
+    ? Buffer.from(parts[3] ?? '', 'base64')
+    : Buffer.alloc(0)
+  const validHash = salt.length === 16 && expected.length === 32
+  const selectedSalt = validHash ? salt : Buffer.alloc(16)
+  const selectedExpected = validHash ? expected : Buffer.alloc(32)
+  const derivedKey = pbkdf2Sync(password, selectedSalt, passwordIterations, 32, 'sha256')
+  return validHash && timingSafeEqual(selectedExpected, derivedKey)
+}
+
+function isValidEmail(email) {
+  return typeof email === 'string' && email.length <= 254
+    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
 function plDateTime(now = new Date()) {
@@ -222,15 +235,26 @@ function isValidName(name) {
   return typeof name === 'string' && name.trim().length >= 2 && name.trim().length <= 80
 }
 
-function cleanSubjects(value) {
-  if (!Array.isArray(value) || !value.length || value.length > 12) {
-    throw new HttpError(400, 'Wybierz od 1 do 12 przedmiotów.')
+function cleanSubjectName(value) {
+  const name = formatSubjectName(value)
+  if (name.length > 80 || !/^[\p{L}\p{N}][\p{L}\p{M}\p{N} .,'’+/#()&-]*$/u.test(name)) {
+    throw new HttpError(400, 'Nazwa tagu może zawierać litery, cyfry i podstawowe znaki interpunkcyjne.')
   }
-  const subjects = [...new Set(value)]
-  if (subjects.some((subject) => typeof subject !== 'string' || !lessonSubjects.has(subject))) {
-    throw new HttpError(400, 'Lista zawiera nieobsługiwany przedmiot.')
+  return name
+}
+
+async function cleanSubjects(value) {
+  if (!Array.isArray(value) || !value.length || value.length > 20
+    || value.some((subject) => typeof subject !== 'string')) {
+    throw new HttpError(400, 'Wybierz od 1 do 20 przedmiotów.')
   }
-  return subjects
+  const catalog = await readCsv('subjects')
+  const subjectByKey = new Map(catalog.map(({ name }) => [subjectKey(name), formatSubjectName(name)]))
+  const subjects = [...new Set(value.map(cleanSubjectName))]
+  if (subjects.some((subject) => !subjectByKey.has(subjectKey(subject)))) {
+    throw new HttpError(400, 'Utwórz nowy tag przed dodaniem go do profilu.')
+  }
+  return subjects.map((subject) => subjectByKey.get(subjectKey(subject)))
 }
 
 function cleanLevels(value) {
@@ -267,15 +291,27 @@ function validateSchedule(weekly, daysOff) {
     }
   }
 
-  const uniqueDaysOff = [...new Set(daysOff)]
+  const dayOffByDate = new Map()
   const today = plDateTime().date
-  if (uniqueDaysOff.some((date) => !isValidDate(date) || date < today)) {
-    throw new HttpError(400, 'Dni wolne muszą być prawidłowymi datami bieżącymi lub przyszłymi.')
+  for (const item of daysOff) {
+    const dayOff = typeof item === 'string' ? { date: item } : item
+    if (!dayOff || typeof dayOff !== 'object' || !isValidDate(dayOff.date) || dayOff.date < today) {
+      throw new HttpError(400, 'Dni wolne muszą być prawidłowymi datami bieżącymi lub przyszłymi.')
+    }
+    const startTime = dayOff.startTime ?? ''
+    const endTime = dayOff.endTime ?? ''
+    if ((startTime || endTime)
+      && (!Number.isFinite(timeToMinutes(startTime))
+        || !Number.isFinite(timeToMinutes(endTime))
+        || timeToMinutes(endTime) - timeToMinutes(startTime) < lessonDuration)) {
+      throw new HttpError(400, 'Dostępność w dniu wolnym musi obejmować co najmniej jedną lekcję 40-minutową.')
+    }
+    dayOffByDate.set(dayOff.date, { date: dayOff.date, startTime, endTime })
   }
-  return { weekly: normalized, daysOff: uniqueDaysOff }
+  return { weekly: normalized, daysOff: [...dayOffByDate.values()] }
 }
 
-function validateBookingSlot(tutor, date, startTime, subject, availability, daysOff, bookings) {
+function validateBookingSlot(tutor, date, startTime, subject, level, availability, daysOff, bookings) {
   if (!isValidDate(date) || date < plDateTime().date) {
     throw new HttpError(400, 'Wybierz prawidłowy dzień w przyszłości.')
   }
@@ -286,12 +322,18 @@ function validateBookingSlot(tutor, date, startTime, subject, availability, days
   if (!String(tutor.subjects).split('|').includes(subject)) {
     throw new HttpError(400, 'Wybierz przedmiot z oferty korepetytora.')
   }
-  if (daysOff.some((day) => day.tutorId === tutor.tutorId && day.date === date)) {
+  if (!levels.has(level) || !String(tutor.levels).split('|').includes(level)) {
+    throw new HttpError(400, 'Wybierz poziom nauczania z oferty korepetytora.')
+  }
+  const dayOff = daysOff.find((day) => day.tutorId === tutor.tutorId && day.date === date)
+  if (dayOff && (!dayOff.startTime || !dayOff.endTime)) {
     throw new HttpError(409, 'Korepetytor oznaczył ten dzień jako wolny.')
   }
   const weekday = String(getWeekday(date))
-  const allowed = availability.some((range) => {
-    if (range.tutorId !== tutor.tutorId || range.weekday !== weekday) return false
+  const ranges = dayOff
+    ? [dayOff]
+    : availability.filter((range) => range.tutorId === tutor.tutorId && range.weekday === weekday)
+  const allowed = ranges.some((range) => {
     const rangeStart = timeToMinutes(range.startTime)
     const rangeEnd = timeToMinutes(range.endTime)
     return start >= rangeStart
@@ -312,32 +354,6 @@ function formatTime(minutes) {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
 }
 
-async function provisionBooking(booking, tutor, userId) {
-  const meeting = await createZoomMeeting(userId, booking, tutor)
-  await updateCsv('bookings', async (bookings) => ({
-    records: bookings.map((item) => item.id === booking.id
-      ? { ...item, zoomStatus: 'ready', zoomJoinUrl: meeting.joinUrl, zoomStartUrl: meeting.startUrl }
-      : item),
-    result: null,
-  }))
-  return { ...booking, zoomStatus: 'ready', zoomJoinUrl: meeting.joinUrl, zoomStartUrl: meeting.startUrl }
-}
-
-async function provisionPendingBookings(tutor, userId) {
-  const pending = (await readCsv('bookings')).filter((booking) => (
-    booking.tutorId === tutor.tutorId
-    && ['pending', 'failed'].includes(booking.zoomStatus)
-    && !booking.zoomJoinUrl
-  ))
-  for (const booking of pending) {
-    try {
-      await provisionBooking(booking, tutor, userId)
-    } catch (error) {
-      console.error(`Nie udało się utworzyć spotkania Zoom dla rezerwacji ${booking.id}:`, error.message)
-    }
-  }
-}
-
 async function serve(request, response) {
   const url = new URL(request.url, 'http://localhost')
   const { pathname } = url
@@ -349,55 +365,73 @@ async function serve(request, response) {
   }
 
   if (method === 'GET' && pathname === '/api/auth/providers') {
-    return send(response, 200, { zoom: zoomConfigured() })
+    return send(response, 200, { password: true, google: false })
+  }
+
+  if (method === 'GET' && pathname === '/api/subjects') {
+    const subjects = await readCsv('subjects')
+    return send(response, 200, {
+      subjects: [...new Set([...DEFAULT_SUBJECTS, ...subjects.map(({ name }) => formatSubjectName(name))])]
+        .sort((a, b) => a.localeCompare(b, 'pl')),
+    })
+  }
+
+  if (method === 'POST' && pathname === '/api/subjects') {
+    const user = await requireUser(request)
+    requireRole(user, 'tutor')
+    const body = await readBody(request)
+    const name = cleanSubjectName(body.name)
+    let subject
+    await updateCsv('subjects', async (subjects) => {
+      subject = subjects.find((item) => subjectKey(item.name) === subjectKey(name))?.name ?? name
+      return {
+        records: subjects.some((item) => subjectKey(item.name) === subjectKey(name))
+          ? subjects
+          : [...subjects, { name }],
+        result: null,
+      }
+    })
+    return send(response, 201, { subject: formatSubjectName(subject) })
   }
 
   if (method === 'POST' && pathname === '/api/auth/register') {
     const body = await readBody(request)
-    if (!['student', 'tutor'].includes(body.role)) {
-      throw new HttpError(400, 'Wybierz rolę ucznia lub korepetytora.')
-    }
-    if (!isValidName(body.firstName) || !isValidName(body.lastName)) {
-      throw new HttpError(400, 'Podaj imię i nazwisko.')
-    }
-    const email = String(body.email ?? '').trim().toLowerCase()
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
-      throw new HttpError(400, 'Podaj prawidłowy adres e-mail.')
-    }
-    if (typeof body.password !== 'string' || body.password.length < 10 || body.password.length > 128) {
-      throw new HttpError(400, 'Hasło musi mieć od 10 do 128 znaków.')
+    const role = body.role
+    const firstName = typeof body.firstName === 'string' ? body.firstName.trim() : ''
+    const lastName = typeof body.lastName === 'string' ? body.lastName.trim() : ''
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const password = body.password
+    if (!['student', 'tutor'].includes(role)
+      || !isValidName(firstName) || !isValidName(lastName) || !isValidEmail(email)
+      || typeof password !== 'string' || password.length < 8 || password.length > 256) {
+      throw new HttpError(400, 'Sprawdź imię, nazwisko, adres e-mail, rolę i hasło (co najmniej 8 znaków).')
     }
 
-    const salt = randomBytes(16).toString('hex')
-    const derivedKey = await scrypt(body.password, salt, 64, { N: 16384, maxmem: 64 * 1024 * 1024 })
-    const tutorId = body.role === 'tutor'
-      ? `${body.firstName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${randomBytes(5).toString('hex')}`
+    const tutorId = role === 'tutor'
+      ? `${firstName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${randomBytes(5).toString('hex')}`
       : ''
     const user = {
       id: randomUUID(),
-      role: body.role,
-      firstName: body.firstName.trim(),
-      lastName: body.lastName.trim(),
+      role,
+      firstName,
+      lastName,
       email,
-      passwordHash: `${salt}:${derivedKey.toString('hex')}`,
+      passwordHash: makePasswordHash(password),
       tutorId,
       createdAt: new Date().toISOString(),
     }
-
-    const created = await updateCsv('users', async (users) => {
+    await updateCsv('users', async (users) => {
       if (users.some((item) => item.email.toLowerCase() === email)) {
         throw new HttpError(409, 'Konto z tym adresem e-mail już istnieje.')
       }
-      return { records: [...users, user], result: true }
+      return { records: [...users, user], result: null }
     })
-    if (!created) throw new Error('Nie udało się utworzyć konta.')
-
-    if (body.role === 'tutor') {
+    if (role === 'tutor') {
       await updateCsv('tutors', async (tutors) => ({
         records: [...tutors, {
           tutorId,
-          firstName: user.firstName,
-          lastName: user.lastName,
+          firstName,
+          lastName,
           age: '',
           teachingSinceYear: new Date().getFullYear(),
           description: 'Dodaj opis swojej oferty i doświadczenia.',
@@ -412,45 +446,97 @@ async function serve(request, response) {
       }))
     }
     await createSession(user.id, response)
-    return send(response, 201, {
-      user: publicUser(user),
-      zoomConfigured: body.role === 'tutor' && zoomConfigured(),
-    })
+    return send(response, 201, { user: publicUser(user) })
   }
 
   if (method === 'POST' && pathname === '/api/auth/login') {
     const body = await readBody(request)
-    const email = String(body.email ?? '').trim().toLowerCase()
-    if (!['student', 'tutor'].includes(body.role)) {
-      throw new HttpError(400, 'Wybierz rolę ucznia lub korepetytora.')
-    }
-    const attemptKey = `${request.socket.remoteAddress}:${email}`
-    const attempts = loginAttempts.get(attemptKey) ?? []
-    const recentAttempts = attempts.filter((time) => Date.now() - time < 15 * 60 * 1000)
-    if (recentAttempts.length >= 8) throw new HttpError(429, 'Zbyt wiele prób. Spróbuj ponownie za 15 minut.')
-    recentAttempts.push(Date.now())
-    loginAttempts.set(attemptKey, recentAttempts)
-
-    const users = await readCsv('users')
-    const user = users.find((item) => item.email.toLowerCase() === email)
-    const [salt, passwordHash] = String(user?.passwordHash ?? ':').split(':')
-    const candidate = await scrypt(String(body.password ?? ''), salt || 'invalid', 64, {
-      N: 16384,
-      maxmem: 64 * 1024 * 1024,
-    })
-    const expected = Buffer.from(passwordHash || '0'.repeat(128), 'hex')
-    if (!user || user.role !== body.role || expected.length !== candidate.length || !timingSafeEqual(expected, candidate)) {
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const password = typeof body.password === 'string' ? body.password : ''
+    const user = isValidEmail(email)
+      ? (await readCsv('users')).find((item) => item.email.toLowerCase() === email)
+      : null
+    const passwordMatches = verifyPassword(
+      password.length <= 256 ? password : '',
+      user?.passwordHash ?? dummyPasswordHash,
+    )
+    if (!passwordMatches || !user || password.length > 256) {
       throw new HttpError(401, 'Nieprawidłowy adres e-mail lub hasło.')
     }
-    loginAttempts.delete(attemptKey)
-    const tutorZoomConfigured = user.role === 'tutor' && zoomConfigured()
-    const tutorZoomConnected = tutorZoomConfigured ? await hasZoomConnection(user.id) : false
     await createSession(user.id, response)
-    return send(response, 200, {
-      user: publicUser(user),
-      zoomConfigured: tutorZoomConfigured,
-      zoomConnected: tutorZoomConnected,
-    })
+    return send(response, 200, { user: publicUser(user) })
+  }
+
+  if (method === 'GET' && pathname === '/api/student/profile') {
+    const user = await requireUser(request)
+    requireRole(user, 'student')
+    return send(response, 200, { profile: publicUser(user) })
+  }
+
+  if (method === 'PUT' && pathname === '/api/student/profile') {
+    const user = await requireUser(request)
+    requireRole(user, 'student')
+    const body = await readBody(request)
+    if (!isValidName(body.firstName) || !isValidName(body.lastName)) {
+      throw new HttpError(400, 'Podaj prawidłowe imię i nazwisko.')
+    }
+    const firstName = body.firstName.trim()
+    const lastName = body.lastName.trim()
+    await updateCsv('users', async (users) => ({
+      records: users.map((item) => item.id === user.id ? { ...item, firstName, lastName } : item),
+      result: null,
+    }))
+    return send(response, 200, { success: true })
+  }
+
+  if (method === 'POST' && pathname === '/api/auth/delete-account') {
+    const user = await requireUser(request)
+    if (user.role === 'tutor') {
+      await removeZoomConnection(user.id)
+      await updateCsv('tutors', async (tutors) => ({
+        records: tutors.filter((tutor) => tutor.tutorId !== user.tutorId),
+        result: null,
+      }))
+      await updateCsv('availability', async (ranges) => ({
+        records: ranges.filter((range) => range.tutorId !== user.tutorId),
+        result: null,
+      }))
+      await updateCsv('daysOff', async (daysOff) => ({
+        records: daysOff.filter((day) => day.tutorId !== user.tutorId),
+        result: null,
+      }))
+      await updateCsv('bookings', async (bookings) => ({
+        records: bookings.filter((booking) => booking.tutorId !== user.tutorId && booking.studentId !== user.id),
+        result: null,
+      }))
+      await updateCsv('reviews', async (reviews) => ({
+        records: reviews.filter((review) => review.tutorId !== user.tutorId && review.studentId !== user.id),
+        result: null,
+      }))
+    } else {
+      await updateCsv('bookings', async (bookings) => ({
+        records: bookings.filter((booking) => booking.studentId !== user.id),
+        result: null,
+      }))
+      await updateCsv('reviews', async (reviews) => ({
+        records: reviews.filter((review) => review.studentId !== user.id),
+        result: null,
+      }))
+    }
+    await updateCsv('oauthStates', async (states) => ({
+      records: states.filter((state) => state.userId !== user.id),
+      result: null,
+    }))
+    await updateCsv('sessions', async (sessions) => ({
+      records: sessions.filter((session) => session.userId !== user.id),
+      result: null,
+    }))
+    await updateCsv('users', async (users) => ({
+      records: users.filter((item) => item.id !== user.id),
+      result: null,
+    }))
+    clearSessionCookie(response)
+    return send(response, 200, { success: true })
   }
 
   if (method === 'POST' && pathname === '/api/auth/logout') {
@@ -484,7 +570,9 @@ async function serve(request, response) {
     const datePrefix = /^\d{4}-\d{2}$/.test(month) ? `${month}-` : ''
     return send(response, 200, {
       availability: availability.filter((range) => range.tutorId === tutorId),
-      daysOff: daysOff.filter((day) => day.tutorId === tutorId && (!datePrefix || day.date.startsWith(datePrefix))),
+      daysOff: daysOff
+        .filter((day) => day.tutorId === tutorId && (!datePrefix || day.date.startsWith(datePrefix)))
+        .map(({ date, startTime, endTime }) => ({ date, startTime: startTime ?? '', endTime: endTime ?? '' })),
       busy: bookings.filter((booking) => booking.tutorId === tutorId)
         .map(({ date, startTime, endTime }) => ({ date, startTime, endTime })),
     })
@@ -547,10 +635,11 @@ async function serve(request, response) {
     const date = String(body.date ?? '')
     const startTime = String(body.startTime ?? '')
     const subject = String(body.subject ?? '')
+    const level = String(body.level ?? '')
     let booking
 
     await updateCsv('bookings', async (bookings) => {
-      validateBookingSlot(tutor, date, startTime, subject, availability, daysOff, bookings)
+      validateBookingSlot(tutor, date, startTime, subject, level, availability, daysOff, bookings)
       const id = randomUUID()
       const endTime = formatTime(timeToMinutes(startTime) + lessonDuration)
       booking = {
@@ -563,6 +652,7 @@ async function serve(request, response) {
         endTime,
         durationMinutes: String(lessonDuration),
         subject,
+        level,
         zoomStatus: 'pending',
         zoomJoinUrl: '',
         zoomStartUrl: '',
@@ -570,20 +660,6 @@ async function serve(request, response) {
       return { records: [...bookings, booking], result: null }
     })
 
-    if (await hasZoomConnection(await tutorAccountId(tutor.tutorId))) {
-      try {
-        booking = await provisionBooking(booking, tutor, await tutorAccountId(tutor.tutorId))
-      } catch (error) {
-        console.error(`Nie udało się utworzyć spotkania Zoom dla rezerwacji ${booking.id}:`, error.message)
-        booking = { ...booking, zoomStatus: 'failed', zoomError: error.message }
-        await updateCsv('bookings', async (bookings) => ({
-          records: bookings.map((item) => item.id === booking.id ? booking : item),
-          result: null,
-        }))
-      }
-    } else {
-      booking.zoomStatus = 'pending'
-    }
     return send(response, 201, {
       booking: {
         id: booking.id,
@@ -593,6 +669,7 @@ async function serve(request, response) {
         endTime: booking.endTime,
         durationMinutes: booking.durationMinutes,
         subject: booking.subject,
+        level: booking.level,
         zoomStatus: booking.zoomStatus,
         zoomJoinUrl: booking.zoomJoinUrl || '',
         ...(booking.zoomError ? { zoomError: booking.zoomError } : {}),
@@ -622,7 +699,7 @@ async function serve(request, response) {
       || !Number.isInteger(teachingSinceYear) || teachingSinceYear < 1950 || teachingSinceYear > new Date().getFullYear()) {
       throw new HttpError(400, 'Sprawdź opis, cenę i rok rozpoczęcia nauczania.')
     }
-    const subjects = cleanSubjects(body.subjects)
+    const subjects = await cleanSubjects(body.subjects)
     const tutorLevels = cleanLevels(body.levels)
     await updateCsv('tutors', async (tutors) => ({
       records: tutors.map((item) => item.tutorId === tutor.tutorId ? {
@@ -652,7 +729,8 @@ async function serve(request, response) {
     const [availability, daysOff] = await Promise.all([readCsv('availability'), readCsv('daysOff')])
     return send(response, 200, {
       weekly: availability.filter((range) => range.tutorId === tutor.tutorId),
-      daysOff: daysOff.filter((day) => day.tutorId === tutor.tutorId).map((day) => day.date),
+      daysOff: daysOff.filter((day) => day.tutorId === tutor.tutorId)
+        .map(({ date, startTime, endTime }) => ({ date, startTime: startTime ?? '', endTime: endTime ?? '' })),
     })
   }
 
@@ -671,7 +749,7 @@ async function serve(request, response) {
     await updateCsv('daysOff', async (entries) => ({
       records: [
         ...entries.filter((entry) => entry.tutorId !== tutor.tutorId),
-        ...daysOff.map((date) => ({ tutorId: tutor.tutorId, date })),
+        ...daysOff.map((day) => ({ ...day, tutorId: tutor.tutorId })),
       ],
       result: null,
     }))
@@ -791,138 +869,13 @@ async function serve(request, response) {
     return send(response, 200, method === 'PUT' ? { review: cleanReview(result, 'Ty') } : { success: true })
   }
 
-  if (method === 'GET' && pathname === '/api/zoom/status') {
-    const user = await requireUser(request)
-    const tutor = await ownedTutor(user)
-    return send(response, 200, {
-      connected: await hasZoomConnection(user.id),
-      configured: zoomConfigured(),
-      hasProfilePhoto: Boolean(tutor.imagePath),
-    })
-  }
-
-  if (method === 'GET' && pathname === '/api/zoom/connect') {
-    const user = await requireUser(request)
-    requireRole(user, 'tutor')
-    if (!zoomConfigured()) {
-      throw new HttpError(503, 'Integracja Zoom wymaga ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET i ZOOM_TOKEN_ENCRYPTION_KEY.')
-    }
-    const state = randomBytes(32).toString('base64url')
-    await updateCsv('oauthStates', async (states) => ({
-      records: [
-        ...states.filter((item) => Date.parse(item.expiresAt) > Date.now()),
-        {
-          stateHash: hash(state),
-          userId: user.id,
-          purpose: 'connect',
-          role: 'tutor',
-          returnTo: '/profile?zoom=connected',
-          expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-        },
-      ],
-      result: null,
-    }))
-    response.writeHead(302, { Location: zoomAuthorizationUrl(state), 'Cache-Control': 'no-store' })
-    return response.end()
-  }
-
-  if (method === 'GET' && pathname === '/api/zoom/login') {
-    const role = url.searchParams.get('role') ?? ''
-    if (!['student', 'tutor'].includes(role)) {
-      throw new HttpError(400, 'Wybierz rolę ucznia lub korepetytora.')
-    }
-    if (!zoomConfigured()) {
-      throw new HttpError(503, 'Logowanie Zoom wymaga ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET i ZOOM_TOKEN_ENCRYPTION_KEY.')
-    }
-    const state = randomBytes(32).toString('base64url')
-    await updateCsv('oauthStates', async (states) => ({
-      records: [
-        ...states.filter((item) => Date.parse(item.expiresAt) > Date.now()),
-        {
-          stateHash: hash(state),
-          userId: '',
-          purpose: 'login',
-          role,
-          returnTo: safeReturnTo(url.searchParams.get('returnTo')),
-          expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-        },
-      ],
-      result: null,
-    }))
-    response.writeHead(302, { Location: zoomAuthorizationUrl(state), 'Cache-Control': 'no-store' })
-    return response.end()
-  }
-
-  if (method === 'GET' && pathname === '/api/zoom/callback') {
-    const state = url.searchParams.get('state') ?? ''
-    const code = url.searchParams.get('code') ?? ''
-    const stateHash = hash(state)
-    let savedState
-    await updateCsv('oauthStates', async (states) => {
-      savedState = states.find((item) => item.stateHash === stateHash
-        && Date.parse(item.expiresAt) > Date.now())
-      return { records: states.filter((item) => item.stateHash !== stateHash), result: null }
-    })
-    if (!savedState) throw new HttpError(400, 'Nieprawidłowy lub wygasły powrót z Zoom OAuth.')
-    if (url.searchParams.has('error')) {
-      const destination = savedState.purpose === 'login' ? '/login?zoomError=cancelled' : '/profile?zoomError=cancelled'
-      response.writeHead(302, { Location: destination, 'Cache-Control': 'no-store' })
-      return response.end()
-    }
-    if (!code) throw new HttpError(400, 'Nieprawidłowy lub wygasły powrót z Zoom OAuth.')
-    const users = await readCsv('users')
-
-    if (savedState.purpose === 'login') {
-      const identity = await exchangeZoomCode(code)
-      const user = users.find((item) => item.role === savedState.role
-        && item.email.toLowerCase() === identity.email)
-      if (!user) {
-        response.writeHead(302, { Location: '/login?zoomError=account-not-found', 'Cache-Control': 'no-store' })
-        return response.end()
-      }
-      if (user.role === 'tutor') {
-        await saveZoomConnection(user.id, identity.tokens)
-        if (identity.imageUrl) {
-          await updateCsv('tutors', async (tutors) => ({
-            records: tutors.map((tutor) => tutor.tutorId === user.tutorId
-              ? { ...tutor, imagePath: identity.imageUrl }
-              : tutor),
-            result: null,
-          }))
-        }
-        await provisionPendingBookings(await tutorById(user.tutorId), user.id)
-      }
-      await createSession(user.id, response)
-      response.writeHead(302, {
-        Location: safeReturnTo(savedState.returnTo, user.role === 'tutor' ? '/profile' : '/'),
-        'Cache-Control': 'no-store',
-      })
-      return response.end()
-    }
-
-    const user = users.find((item) => item.id === savedState.userId)
-    if (!user || user.role !== 'tutor') throw new HttpError(403, 'Nie znaleziono konta korepetytora.')
-    const identity = await exchangeZoomCode(code, user.id)
-    if (identity.imageUrl) {
-      await updateCsv('tutors', async (tutors) => ({
-        records: tutors.map((tutor) => tutor.tutorId === user.tutorId
-          ? { ...tutor, imagePath: identity.imageUrl }
-          : tutor),
-        result: null,
-      }))
-    }
-    await provisionPendingBookings(await tutorById(user.tutorId), user.id)
-    response.writeHead(302, { Location: '/profile?zoom=connected', 'Cache-Control': 'no-store' })
-    return response.end()
+  if (pathname.startsWith('/api/zoom/')) {
+    throw new HttpError(410, 'Integracja Zoom została wyłączona.')
   }
 
   throw new HttpError(404, 'Nie znaleziono endpointu API.')
 }
 
-async function tutorAccountId(tutorId) {
-  const users = await readCsv('users')
-  return users.find((user) => user.role === 'tutor' && user.tutorId === tutorId)?.id
-}
 
 const server = createServer(async (request, response) => {
   try {

@@ -27,7 +27,7 @@
 \begin{titlepage}
 \thispagestyle{empty}
 \vspace*{32mm}
-{\large\color{blue}\textbf{RAPORT POSTĘPU · 26 PAŹDZIERNIKA 2026}}
+{\large\color{blue}\textbf{RAPORT POSTĘPU · 27 PAŹDZIERNIKA 2026}}
 \vspace{12mm}
 {\Huge\bfseries\color{navy}Tutorland\par}
 \vspace{4mm}
@@ -35,10 +35,10 @@
 \vspace{13mm}
 \color{blue}\rule{\textwidth}{2pt}
 \vspace{9mm}
-{\large Przegląd aplikacji, lokalnego API, przygotowania PHP/MySQL i planowanego hostingu.}
+{\large Przegląd aplikacji, lokalnego API, przygotowania PHP/MySQL i nowej domeny wdrożeniowej.}
 \vfill
 \colorbox{pale}{\parbox{\dimexpr\textwidth-2\fboxsep\relax}{\textbf{W skrócie}\\
-Działa katalog publiczny, logowanie i rejestracja z wyborem roli, profile, rezerwacje, panele ucznia i korepetytora oraz opinie. Lokalny tryb developerski korzysta z Node.js i CSV; dla hostingu PHP przygotowano API PHP, schemat MySQL i konfigurację wdrożenia. Zoom OAuth wymaga ustawień Zoom, sekretów na hostingu oraz potwierdzenia, że hosting dopuszcza połączenia wychodzące.}}\par
+Działa katalog publiczny, logowanie e-mail/hasło i rejestracja z wyborem roli, profile, rezerwacje, panele ucznia i korepetytora oraz opinie. Lokalny tryb developerski korzysta z Node.js i CSV; dla hostingu PHP przygotowano API PHP i schemat MySQL. Użytkownik potwierdził dostępność HTTPS dla domeny `tutorland.infinityfree.io`; logowanie powinno być testowane pod adresem HTTPS.}}\par
 \vspace{12mm}
 {\small\color{muted}Raport opisuje kod projektu. Nie oznacza wdrożenia publicznego serwera ani aktywnego połączenia z zewnętrznym kontem Zoom.}
 \end{titlepage}
@@ -46,15 +46,15 @@ Działa katalog publiczny, logowanie i rejestracja z wyborem roli, profile, reze
 \section{Zaimplementowane funkcje}
 \begin{itemize}
 \item \textbf{Katalog publiczny:} karty i profile korepetytorów, wyszukiwanie po imieniu i nazwisku, filtr przedmiotu i poziomu nauczania oraz podgląd dostępnych terminów przez gości.
-\item \textbf{Konta i role:} osobne rejestracja i logowanie z wyborem ucznia lub korepetytora, sesja w ciasteczku \texttt{HttpOnly}, hasła przechowywane jako hashe scrypt oraz wylogowanie. Rola jest sprawdzana po stronie API.
+\item \textbf{Konta i role:} rejestracja i logowanie adresem e-mail oraz hasłem, wybór ucznia lub korepetytora, sesja w ciasteczku \texttt{HttpOnly}, hasła przechowywane jako hashe PBKDF2-SHA-256 oraz wylogowanie. Logowanie Google nie jest skonfigurowane. Rola jest sprawdzana po stronie API.
 \item \textbf{Tryb developerski:} lokalne API Node obsługuje konta, katalog, profile, dostępność, rezerwacje i opinie; zapisuje dane w prywatnych plikach CSV w \texttt{server/data/}.
-\item \textbf{Tryb wdrożeniowy:} dodano API PHP w \texttt{public/api/index.php} z tymi samymi ścieżkami \texttt{/api/...}, obsługą kont, sesji, ról, profili, dostępności, rezerwacji, opinii i Zoom OAuth.
-\item \textbf{MySQL:} utworzono \texttt{tutorland-database.sql} poza katalogiem aplikacji. Schemat obejmuje konta, profile, przedmioty, poziomy, dostępność, dni wolne, rezerwacje, opinie, sesje, stany OAuth i szyfrowane tokeny Zoom.
+\item \textbf{Tryb wdrożeniowy:} dodano API PHP w \texttt{public/api/index.php} z tymi samymi ścieżkami \texttt{/api/...}, obsługą kont, sesji, ról, profili, dostępności, rezerwacji i opinii.
+\item \textbf{MySQL:} utworzono \texttt{tutorland-database.sql} poza katalogiem aplikacji. Schemat obejmuje konta z hashami haseł, profile, przedmioty, poziomy, dostępność, dni wolne, rezerwacje, opinie i sesje. Tabele Zoom w schemacie są pozostałością i nie są używane przez aktualne API.
 \item \textbf{Rezerwacje:} uczeń może zapisać się na dostępny termin lekcji 40-minutowej. API weryfikuje rolę, przedmiot, dostępność, dni wolne, przeszłe godziny i nakładające się rezerwacje.
-\item \textbf{Panel ucznia:} lista zaplanowanych i zakończonych spotkań, linki do spotkań Zoom, historia własnych opinii oraz formularze dodawania, edycji i usuwania. Opinię można dodać po zakończonej lekcji; obowiązuje jedna aktywna opinia na ucznia i korepetytora.
+\item \textbf{Panel ucznia:} lista zaplanowanych i zakończonych lekcji, historia własnych opinii oraz formularze dodawania, edycji i usuwania. Linki do spotkań nie są obecnie tworzone.
 \item \textbf{Panel korepetytora:} edycja profilu, przedmiotów, poziomów i ceny; suwaki do ustawiania godzin dostępności w tygodniu; kalendarz liczby rezerwacji w bieżącym miesiącu i oznaczanie dni wolnych w kolejnym miesiącu.
 \item \textbf{Powiadomienia korepetytora:} zaplanowane i zakończone lekcje oraz opinie uczniów. Korepetytor może je przeglądać, ale nie edytować.
-\item \textbf{Połączenie Zoom:} OAuth korepetytora, pobieranie zdjęcia profilu Zoom i spotkania 40-minutowe. Tokeny są szyfrowane lokalnie w CSV-backendzie lub w tabeli MySQL w backendzie PHP. Uczeń otrzymuje link dołączenia, a link prowadzący jest udostępniany korepetytorowi.
+\item \textbf{Integracja Zoom:} wyłączona. Endpointy \texttt{/api/zoom/...} zwracają HTTP 410; nowe rezerwacje nie tworzą spotkań ani linków.
 \item \textbf{Dane konta demonstracyjnego:} usunięto wskazane konto testowe z aplikacji i źródłowych danych demonstracyjnych. Uczniowie nie mają zdjęć profilowych. Nazwę poziomu zmieniono na „Szkoła Podstawowa”.
 \end{itemize}
 
@@ -67,11 +67,11 @@ Obszar & Stan i wymagane działanie\\
 Lokalny start & \texttt{npm run dev} uruchamia Vite i API Node. Zmienne dane developerskie trafiają do ignorowanego katalogu \texttt{server/data/}.\\
 Produkcja & Przygotowano statyczny build React z API PHP oraz routingiem Apache przez pliki \texttt{.htaccess}. Na hosting należy wgrać zawartość \texttt{dist/}, a nie \texttt{node\_modules} ani całe repozytorium.\\
 MySQL & Zaimportuj \texttt{tutorland-database.sql} do bazy utworzonej w panelu/phpMyAdmin. Konfiguracja połączenia jest tworzona osobno jako ignorowany plik \texttt{api/config.local.php}; wartości z panelu hostingu nie trafiają do repozytorium.\\
-Zoom OAuth & Przygotowany adres callbacku to \texttt{https://tutorland.infinityfreeapp.com/api/zoom/callback}; lista dozwolonych obejmuje domenę \texttt{tutorland.infinityfreeapp.com}. Potrzebne są zakresy odczytu profilu i tworzenia spotkań oraz prywatna konfiguracja Zoom na hostingu.\\
-Linki spotkań & Rezerwacja bez połączonego Zoom pozostaje oczekująca; po połączeniu serwer próbuje utworzyć spotkania oczekujące. Błędy Zoom są zapisywane i pokazywane w statusie rezerwacji.\\
+Logowanie & E-mail i hasło, sesja w ciasteczku \texttt{HttpOnly; Secure}. Google nie jest skonfigurowane.\\
+Spotkania & Rezerwacje zapisują termin lekcji, ale aplikacja nie tworzy obecnie linków do wideorozmów.\\
 Poczta e-mail & Aplikacja nie wysyła e-maili; powiadomienia są dostępne w panelach kont.\\
-Środowisko & Kod jest przygotowany do wdrożenia, ale nie został jeszcze wgrany. HTTPS, dane połączenia MySQL, klucz szyfrowania, backupy i rzeczywisty przepływ Zoom wymagają konfiguracji na hostingu.\\
-Ograniczenie hostingu & Serwer musi mieć PHP cURL i dopuszczać połączenia HTTPS wychodzące do Zoom. To trzeba potwierdzić testem po publikacji.\\
+Środowisko & Nowa domena to \texttt{tutorland.infinityfree.io}; użytkownik potwierdził dostępność HTTPS. Używaj adresu \texttt{https://tutorland.infinityfree.io}; nie wyłączaj flagi \texttt{Secure} ciasteczka sesji. Przed logowaniem sprawdź, czy przeglądarka nie zgłasza błędu certyfikatu.\\
+Ograniczenie hostingu & Logowanie i rezerwacje nie wymagają połączeń do zewnętrznych usług.\\
 \bottomrule
 \end{tabularx}
 \normalsize

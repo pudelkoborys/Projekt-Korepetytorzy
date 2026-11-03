@@ -595,6 +595,64 @@
   list-style: none;
 }
 
+.subject-tags li {
+  display: inline-flex;
+  list-style: none;
+}
+
+.subject-tags li::marker {
+  content: none;
+}
+
+.subject-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.subject-editor > label {
+  color: var(--text-color);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.subject-editor-tags {
+  margin-bottom: 0;
+}
+
+.subject-editor-tags li {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.subject-remove {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted-color);
+  font: inherit;
+  cursor: pointer;
+}
+
+.subject-remove:hover {
+  background: var(--border-color);
+  color: var(--text-color);
+}
+
+.subject-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.subject-search-row input {
+  width: 0;
+  min-width: 0;
+  flex: 1;
+}
+
 .subject-tag {
   display: inline-block;
   padding: 4px 8px;
@@ -1059,25 +1117,6 @@
   opacity: 0.5;
 }
 
-.zoom-login-button {
-  display: flex;
-  min-height: 40px;
-  align-items: center;
-  justify-content: center;
-  margin-top: 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 9px;
-  color: var(--text-color);
-  font-size: 0.82rem;
-  font-weight: 650;
-  text-decoration: none;
-}
-
-.zoom-login-button:hover {
-  border-color: var(--button-color);
-  color: var(--button-color);
-}
-
 .booking-error {
   margin: 12px 0 0;
   color: #c96f7a;
@@ -1479,7 +1518,7 @@
 }
 
 .auth-switch a,
-.notification-card a:not(.zoom-link) {
+.notification-card a {
   color: var(--button-color);
   font-weight: 650;
 }
@@ -1531,22 +1570,6 @@
   margin-bottom: 2px;
 }
 
-.zoom-link,
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  width: fit-content;
-  margin-top: 6px;
-  padding: 7px 11px;
-  border-radius: 8px;
-  background: #e8effb;
-  color: #315b99;
-  font-size: 0.84rem;
-  font-weight: 650;
-  text-decoration: none;
-}
-
 .text-button {
   margin: 10px 12px 0 0;
   padding: 0;
@@ -1562,6 +1585,29 @@
 
 .text-button--danger {
   color: #a43f3f;
+}
+
+.text-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.account-delete-divider {
+  display: grid;
+  gap: 7px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-color);
+}
+
+.account-delete-divider h3 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 0.95rem;
+}
+
+.delete-account .form-error {
+  margin-bottom: 8px;
 }
 
 .form-actions {
@@ -1728,6 +1774,86 @@
   background: var(--level-tertiary-background);
 }
 
+.calendar-section .calendar-day.is-special-hours {
+  border-color: var(--level-secondary-border);
+  background: var(--level-secondary-background);
+  color: #39321f;
+}
+
+.calendar-legend--availability {
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.calendar-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.calendar-legend-dot {
+  width: 9px;
+  height: 9px;
+  border: 1px solid;
+  border-radius: 50%;
+}
+
+.calendar-legend-dot--regular {
+  border-color: var(--level-primary-border);
+  background: var(--level-primary-background);
+}
+
+.calendar-legend-dot--off {
+  border-color: var(--level-tertiary-border);
+  background: var(--level-tertiary-background);
+}
+
+.calendar-legend-dot--special {
+  border-color: var(--level-secondary-border);
+  background: var(--level-secondary-background);
+}
+
+.day-off-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--page-background);
+}
+
+.day-off-editor h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.day-off-editor .check-option {
+  margin: 0;
+}
+
+.day-off-time-range {
+  display: flex;
+  gap: 12px;
+}
+
+.day-off-time-range label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted-color);
+  font-size: 0.78rem;
+}
+
+.day-off-time-range input {
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--surface-background);
+  color: var(--text-color);
+  font: inherit;
+}
+
 .calendar-month-nav h2 {
   margin: 0;
 }
@@ -1741,25 +1867,6 @@
   font: inherit;
   font-size: 0.75rem;
   cursor: pointer;
-}
-
-.zoom-connect {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border-color);
-}
-
-.zoom-connect p {
-  color: var(--muted-color);
-  font-size: 0.85rem;
-}
-
-.zoom-connect .book-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 13px;
-  text-decoration: none;
 }
 
 button:focus-visible,

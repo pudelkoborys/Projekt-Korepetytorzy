@@ -54,6 +54,13 @@ export async function saveZoomConnection(userId, tokens) {
   await writeConnection(userId, tokens)
 }
 
+export async function removeZoomConnection(userId) {
+  const connections = await readConnections()
+  if (!(userId in connections)) return
+  delete connections[userId]
+  await writePrivateJson(TOKEN_FILE, connections)
+}
+
 async function getTokens(userId) {
   const connections = await readConnections()
   return connections[userId] ? decrypt(connections[userId]) : null
@@ -124,6 +131,8 @@ export async function exchangeZoomCode(code, userId = '') {
   return {
     tokens,
     email,
+    firstName: typeof profile.first_name === 'string' ? profile.first_name.trim() : '',
+    lastName: typeof profile.last_name === 'string' ? profile.last_name.trim() : '',
     imageUrl: typeof profile.pic_url === 'string' && /^https:\/\//i.test(profile.pic_url)
       ? profile.pic_url
       : '',

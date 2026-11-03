@@ -2,10 +2,6 @@
 declare(strict_types=1);
 
 const LESSON_MINUTES = 40;
-const SUBJECTS = [
-    'Matematyka', 'Fizyka', 'Chemia', 'Informatyka', 'Angielski', 'Biologia',
-    'Polski', 'Historia', 'Geografia', 'WOS', 'Filozofia', 'Ekonomia',
-];
 const LEVELS = ['primary', 'secondary', 'tertiary'];
 const SESSION_COOKIE = 'tutorland_session';
 
@@ -158,23 +154,76 @@ function isValidName(mixed $name): bool
     return is_string($name) && mb_strlen(trim($name)) >= 2 && mb_strlen(trim($name)) <= 80;
 }
 
+function makePasswordHash(string $password): string
+{
+    $iterations = 310000;
+    $salt = random_bytes(16);
+    $derivedKey = hash_pbkdf2('sha256', $password, $salt, $iterations, 32, true);
+    return 'pbkdf2-sha256$' . $iterations . '$' . base64_encode($salt) . '$' . base64_encode($derivedKey);
+}
+
+function verifyPassword(string $password, string $storedHash): bool
+{
+    $parts = explode('$', $storedHash);
+    $valid = count($parts) === 4 && $parts[0] === 'pbkdf2-sha256'
+        && (int)$parts[1] === 310000;
+    $salt = $valid ? base64_decode($parts[2], true) : false;
+    $expected = $valid ? base64_decode($parts[3], true) : false;
+    $valid = $valid && is_string($salt) && strlen($salt) === 16
+        && is_string($expected) && strlen($expected) === 32;
+    $selectedSalt = $valid ? $salt : str_repeat("\0", 16);
+    $selectedExpected = $valid ? $expected : str_repeat("\0", 32);
+    $derivedKey = hash_pbkdf2('sha256', $password, $selectedSalt, 310000, 32, true);
+    return $valid && hash_equals($selectedExpected, $derivedKey);
+}
+
 function cleanSubjects(mixed $subjects): array
 {
-    if (!is_array($subjects) || count($subjects) < 1 || count($subjects) > 12) {
-        throw new ApiError(400, 'Wybierz od 1 do 12 przedmiotów.');
+    if (!is_array($subjects) || count($subjects) < 1 || count($subjects) > 20) {
+        throw new ApiError(400, 'Wybierz od 1 do 20 przedmiotów.');
     }
     foreach ($subjects as $subject) {
         if (!is_string($subject)) {
-            throw new ApiError(400, 'Lista zawiera nieobsługiwany przedmiot.');
+            throw new ApiError(400, 'Lista zawiera nieprawidłowy tag.');
         }
     }
-    $subjects = array_values(array_unique($subjects));
+    $subjects = array_values(array_unique(array_map('formatSubjectName', $subjects)));
+    $statement = db()->prepare(
+        'SELECT name FROM subject_tags WHERE name IN (' . implode(', ', array_fill(0, count($subjects), '?')) . ')',
+    );
+    $statement->execute($subjects);
+    $available = [];
+    foreach ($statement->fetchAll() as $row) {
+        $available[mb_strtolower($row['name'], 'UTF-8')] = $row['name'];
+    }
     foreach ($subjects as $subject) {
-        if (!is_string($subject) || !in_array($subject, SUBJECTS, true)) {
-            throw new ApiError(400, 'Lista zawiera nieobsługiwany przedmiot.');
+        if (!isset($available[mb_strtolower($subject, 'UTF-8')])) {
+            throw new ApiError(400, 'Utwórz nowy tag przed dodaniem go do profilu.');
         }
     }
-    return $subjects;
+    return array_values(array_map(
+        static fn(string $subject): string => $available[mb_strtolower($subject, 'UTF-8')],
+        $subjects,
+    ));
+}
+
+function formatSubjectName(mixed $subject): string
+{
+    if (!is_string($subject)) {
+        throw new ApiError(400, 'Podaj nazwę tagu.');
+    }
+    $name = preg_replace('/\s+/u', ' ', trim($subject));
+    if (!is_string($name)) {
+        throw new ApiError(400, 'Nazwa tagu zawiera nieprawidłowe znaki.');
+    }
+    $name = preg_replace_callback('/(^|[\s-])(\p{L})/u', static fn(array $matches): string => (
+        $matches[1] . mb_strtoupper($matches[2], 'UTF-8')
+    ), $name);
+    if (!is_string($name) || mb_strlen($name, 'UTF-8') > 80
+        || !preg_match('/^[\p{L}\p{N}][\p{L}\p{M}\p{N} .,\'’+\/#()&-]*$/u', $name)) {
+        throw new ApiError(400, 'Nazwa tagu może zawierać litery, cyfry i podstawowe znaki interpunkcyjne.');
+    }
+    return $name;
 }
 
 function cleanLevels(mixed $levels): array
@@ -456,6 +505,8 @@ function zoomIdentity(string $code): array
     }
     return [
         'email' => $email,
+        'firstName' => trim((string)($profile['first_name'] ?? '')),
+        'lastName' => trim((string)($profile['last_name'] ?? '')),
         'imageUrl' => preg_match('/^https:\/\//i', (string)($profile['pic_url'] ?? ''))
             ? (string)$profile['pic_url']
             : '',
@@ -746,18 +797,90 @@ function handleOAuthCallback(): never
         }
         throw $error;
     }
+    if (in_array($saved['purpose'], ['login', 'register'], true)) {
+        redirectTo('/login?error=zoom-login-disabled');
+    }
     if (isset($_GET['error'])) {
-        redirectTo($saved['purpose'] === 'login' ? '/login?zoomError=cancelled' : '/profile?zoomError=cancelled');
+        $destination = $saved['purpose'] === 'connect'
+            ? '/profile?zoomError=cancelled'
+            : ($saved['purpose'] === 'register' ? '/register?zoomError=cancelled' : '/login?zoomError=cancelled');
+        redirectTo($destination);
     }
     $code = (string)($_GET['code'] ?? '');
     if ($code === '') {
         throw new ApiError(400, 'Nieprawidłowy lub wygasły powrót z Zoom OAuth.');
     }
     $identity = zoomIdentity($code);
-    if ($saved['purpose'] === 'login') {
-        $statement = db()->prepare('SELECT * FROM users WHERE role = ? AND email = ? LIMIT 1');
-        $statement->execute([$saved['role'], $identity['email']]);
+    if ($saved['purpose'] === 'login' || $saved['purpose'] === 'register') {
+        $statement = db()->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
+        $statement->execute([$identity['email']]);
         $user = $statement->fetch();
+        if ($saved['purpose'] === 'register') {
+            if ($user) {
+                redirectTo('/login?zoomError=account-exists');
+            }
+            $role = (string)$saved['role'];
+            if (!in_array($role, ['student', 'tutor'], true)) {
+                throw new ApiError(400, 'Nieprawidłowa rola rejestracji.');
+            }
+            $firstName = isValidName($identity['firstName']) ? $identity['firstName'] : 'Nowy';
+            $lastName = isValidName($identity['lastName']) ? $identity['lastName'] : 'Użytkownik';
+            $id = randomId();
+            $tutorId = $role === 'tutor'
+                ? trim((string)preg_replace('/[^a-z0-9]+/', '-', strtolower($firstName)), '-') . '-' . bin2hex(random_bytes(5))
+                : null;
+            $pdo = db();
+            try {
+                $pdo->beginTransaction();
+                $insert = $pdo->prepare(
+                    'INSERT INTO users (id, role, first_name, last_name, email, password_hash, tutor_id)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)',
+                );
+                $insert->execute([$id, $role, $firstName, $lastName, $identity['email'], '', $tutorId]);
+                if ($role === 'tutor') {
+                    $insert = $pdo->prepare(
+                        'INSERT INTO tutor_profiles (tutor_id, user_id, teaching_since_year, description, price_per_lesson, image_path)
+                         VALUES (?, ?, ?, ?, 100, ?)',
+                    );
+                    $insert->execute([
+                        $tutorId,
+                        $id,
+                        (int)nowInAppZone()->format('Y'),
+                        'Dodaj opis swojej oferty i doświadczenia.',
+                        $identity['imageUrl'],
+                    ]);
+                    $pdo->prepare('INSERT INTO tutor_subjects (tutor_id, subject) VALUES (?, ?)')
+                        ->execute([$tutorId, 'Matematyka']);
+                    $pdo->prepare('INSERT INTO tutor_levels (tutor_id, level) VALUES (?, ?)')
+                        ->execute([$tutorId, 'primary']);
+                }
+                $pdo->commit();
+            } catch (PDOException $error) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                if ($error->getCode() === '23000') {
+                    redirectTo('/login?zoomError=account-exists');
+                }
+                throw $error;
+            } catch (Throwable $error) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $error;
+            }
+            $statement = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
+            $statement->execute([$id]);
+            $user = $statement->fetch();
+            if (!$user) {
+                throw new RuntimeException('Nie udało się odczytać utworzonego konta.');
+            }
+            if ($role === 'tutor') {
+                saveZoomIdentity($user, $identity);
+            }
+            createSession((string)$user['id']);
+            redirectTo('/profile?complete=1');
+        }
         if (!$user) {
             redirectTo('/login?zoomError=account-not-found');
         }
@@ -791,8 +914,8 @@ function handleApi(): never
     $path = $path === '' ? '/' : $path;
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 
-    if ($method === 'GET' && $path === '/api/zoom/callback') {
-        handleOAuthCallback();
+    if (str_starts_with($path, '/api/zoom/')) {
+        throw new ApiError(410, 'Integracja Zoom została wyłączona.');
     }
     if (in_array($method, ['POST', 'PUT', 'DELETE'], true)) {
         assertSameOrigin();
@@ -802,35 +925,44 @@ function handleApi(): never
         sendJson(200, ['user' => publicUser(currentUser())]);
     }
     if ($method === 'GET' && $path === '/api/auth/providers') {
-        sendJson(200, ['zoom' => zoomConfigured()]);
+        sendJson(200, ['password' => true, 'google' => false]);
+    }
+    if ($method === 'GET' && $path === '/api/subjects') {
+        $statement = db()->query('SELECT name FROM subject_tags ORDER BY name');
+        sendJson(200, ['subjects' => array_column($statement->fetchAll(), 'name')]);
+    }
+    if ($method === 'POST' && $path === '/api/subjects') {
+        $user = requireUser();
+        requireRole($user, 'tutor');
+        $name = formatSubjectName(body()['name'] ?? null);
+        $statement = db()->prepare('INSERT IGNORE INTO subject_tags (name) VALUES (?)');
+        $statement->execute([$name]);
+        $statement = db()->prepare('SELECT name FROM subject_tags WHERE name = ? LIMIT 1');
+        $statement->execute([$name]);
+        $subject = $statement->fetchColumn();
+        if (!is_string($subject)) {
+            throw new RuntimeException('Nie udało się odczytać zapisanego tagu.');
+        }
+        sendJson(201, ['subject' => $subject]);
     }
     if ($method === 'POST' && $path === '/api/auth/register') {
         $input = body();
         $role = $input['role'] ?? '';
-        if (!in_array($role, ['student', 'tutor'], true)) {
-            throw new ApiError(400, 'Wybierz rolę ucznia lub korepetytora.');
-        }
-        if (!isValidName($input['firstName'] ?? null) || !isValidName($input['lastName'] ?? null)) {
-            throw new ApiError(400, 'Podaj imię i nazwisko.');
-        }
-        $email = strtolower(trim((string)($input['email'] ?? '')));
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 254) {
-            throw new ApiError(400, 'Podaj prawidłowy adres e-mail.');
-        }
+        $firstName = is_string($input['firstName'] ?? null) ? trim($input['firstName']) : '';
+        $lastName = is_string($input['lastName'] ?? null) ? trim($input['lastName']) : '';
+        $email = is_string($input['email'] ?? null) ? strtolower(trim($input['email'])) : '';
         $password = $input['password'] ?? null;
-        if (!is_string($password) || strlen($password) < 10 || strlen($password) > 128) {
-            throw new ApiError(400, 'Hasło musi mieć od 10 do 128 znaków.');
+        if (!in_array($role, ['student', 'tutor'], true)
+            || !isValidName($firstName) || !isValidName($lastName)
+            || strlen($email) > 254 || filter_var($email, FILTER_VALIDATE_EMAIL) === false
+            || !is_string($password) || strlen($password) < 8 || strlen($password) > 256) {
+            throw new ApiError(400, 'Sprawdź imię, nazwisko, adres e-mail, rolę i hasło (co najmniej 8 znaków).');
         }
-        $firstName = trim($input['firstName']);
-        $lastName = trim($input['lastName']);
+
         $id = randomId();
         $tutorId = $role === 'tutor'
             ? trim((string)preg_replace('/[^a-z0-9]+/', '-', strtolower($firstName)), '-') . '-' . bin2hex(random_bytes(5))
             : null;
-        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-        if (!is_string($passwordHash)) {
-            throw new RuntimeException('Nie udało się zabezpieczyć hasła.');
-        }
         $pdo = db();
         try {
             $pdo->beginTransaction();
@@ -838,7 +970,7 @@ function handleApi(): never
                 'INSERT INTO users (id, role, first_name, last_name, email, password_hash, tutor_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?)',
             );
-            $statement->execute([$id, $role, $firstName, $lastName, $email, $passwordHash, $tutorId]);
+            $statement->execute([$id, $role, $firstName, $lastName, $email, makePasswordHash($password), $tutorId]);
             if ($role === 'tutor') {
                 $statement = $pdo->prepare(
                     'INSERT INTO tutor_profiles (tutor_id, user_id, teaching_since_year, description, price_per_lesson)
@@ -864,56 +996,73 @@ function handleApi(): never
                 throw new ApiError(409, 'Konto z tym adresem e-mail już istnieje.');
             }
             throw $error;
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $error;
         }
-        createSession($id);
-        sendJson(201, [
-            'user' => [
-                'id' => $id,
-                'role' => $role,
-                'firstName' => $firstName,
-                'lastName' => $lastName,
-                'tutorId' => $tutorId ?? '',
-            ],
-            'zoomConfigured' => $role === 'tutor' && zoomConfigured(),
-        ]);
+        $statement = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
+        $statement->execute([$id]);
+        $user = $statement->fetch();
+        if (!$user) {
+            throw new RuntimeException('Nie udało się odczytać utworzonego konta.');
+        }
+        createSession((string)$user['id']);
+        sendJson(201, ['user' => publicUser($user)]);
     }
     if ($method === 'POST' && $path === '/api/auth/login') {
         $input = body();
-        $role = $input['role'] ?? '';
-        if (!in_array($role, ['student', 'tutor'], true)) {
-            throw new ApiError(400, 'Wybierz rolę ucznia lub korepetytora.');
-        }
-        $email = strtolower(trim((string)($input['email'] ?? '')));
-        $password = is_string($input['password'] ?? null) ? $input['password'] : '';
-        $ipHash = hash('sha256', (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
-        $pdo = db();
-        $statement = $pdo->prepare(
-            'SELECT COUNT(*) FROM login_attempts WHERE ip_hash = ? AND attempted_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 MINUTE)',
-        );
-        $statement->execute([$ipHash]);
-        if ((int)$statement->fetchColumn() >= 8) {
-            throw new ApiError(429, 'Zbyt wiele prób. Spróbuj ponownie za 15 minut.');
-        }
-        $pdo->prepare('INSERT INTO login_attempts (ip_hash, attempted_at) VALUES (?, UTC_TIMESTAMP())')->execute([$ipHash]);
-        $pdo->prepare('DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY)')->execute();
-        $statement = $pdo->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
+        $email = is_string($input['email'] ?? null) ? strtolower(trim($input['email'])) : '';
+        $password = $input['password'] ?? '';
+        $statement = db()->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
         $statement->execute([$email]);
-        $user = $statement->fetch();
-        $dummyHash = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
-        $validPassword = password_verify($password, $user['password_hash'] ?? $dummyHash);
-        if (!$user || $user['role'] !== $role || !$validPassword) {
+        $user = $statement->fetch() ?: null;
+        $passwordMatches = verifyPassword(
+            is_string($password) && strlen($password) <= 256 ? $password : '',
+            (string)($user['password_hash'] ?? ''),
+        );
+        if (!$user || !is_string($password) || strlen($password) > 256 || !$passwordMatches) {
             throw new ApiError(401, 'Nieprawidłowy adres e-mail lub hasło.');
         }
-        $pdo->prepare('DELETE FROM login_attempts WHERE ip_hash = ?')->execute([$ipHash]);
-        $zoomOn = $role === 'tutor' && zoomConfigured();
-        $statement = $pdo->prepare('SELECT COUNT(*) FROM zoom_connections WHERE user_id = ?');
-        $statement->execute([$user['id']]);
         createSession((string)$user['id']);
-        sendJson(200, [
-            'user' => publicUser($user),
-            'zoomConfigured' => $zoomOn,
-            'zoomConnected' => $zoomOn && (int)$statement->fetchColumn() > 0,
-        ]);
+        sendJson(200, ['user' => publicUser($user)]);
+    }
+    if ($method === 'GET' && $path === '/api/student/profile') {
+        $user = requireUser();
+        requireRole($user, 'student');
+        sendJson(200, ['profile' => publicUser($user)]);
+    }
+    if ($method === 'PUT' && $path === '/api/student/profile') {
+        $user = requireUser();
+        requireRole($user, 'student');
+        $input = body();
+        if (!isValidName($input['firstName'] ?? null) || !isValidName($input['lastName'] ?? null)) {
+            throw new ApiError(400, 'Podaj prawidłowe imię i nazwisko.');
+        }
+        $statement = db()->prepare("UPDATE users SET first_name = ?, last_name = ? WHERE id = ? AND role = 'student'");
+        $statement->execute([trim($input['firstName']), trim($input['lastName']), $user['id']]);
+        sendJson(200, ['success' => true]);
+    }
+    if ($method === 'POST' && $path === '/api/auth/delete-account') {
+        $user = requireUser();
+        $pdo = db();
+        $pdo->beginTransaction();
+        try {
+            $statement = $pdo->prepare('DELETE FROM users WHERE id = ?');
+            $statement->execute([$user['id']]);
+            if ($statement->rowCount() !== 1) {
+                throw new ApiError(404, 'Nie znaleziono konta do usunięcia.');
+            }
+            $pdo->commit();
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $error;
+        }
+        clearSessionCookie();
+        sendJson(200, ['success' => true]);
     }
     if ($method === 'POST' && $path === '/api/auth/logout') {
         $token = $_COOKIE[SESSION_COOKIE] ?? '';
@@ -1015,6 +1164,7 @@ function handleApi(): never
                 'endTime' => substr((string)$row['end_time'], 0, 5),
                 'durationMinutes' => (string)$row['duration_minutes'],
                 'subject' => $row['subject'],
+                'level' => $row['education_level'],
                 'zoomStatus' => $row['zoom_status'],
                 'zoomJoinUrl' => $row['zoom_join_url'],
                 'studentName' => $row['student_first'] . ' ' . $row['student_last'],
@@ -1037,6 +1187,7 @@ function handleApi(): never
         $date = (string)($input['date'] ?? '');
         $startTime = (string)($input['startTime'] ?? '');
         $subject = (string)($input['subject'] ?? '');
+        $level = is_string($input['level'] ?? null) ? $input['level'] : '';
         $pdo = db();
         $pdo->beginTransaction();
         try {
@@ -1048,6 +1199,14 @@ function handleApi(): never
             $tutor = $statement->fetch();
             if (!$tutor) {
                 throw new ApiError(404, 'Nie znaleziono korepetytora.');
+            }
+            if (!in_array($level, LEVELS, true)) {
+                throw new ApiError(400, 'Wybierz prawidłowy poziom nauczania.');
+            }
+            $statement = $pdo->prepare('SELECT level FROM tutor_levels WHERE tutor_id = ?');
+            $statement->execute([$tutorId]);
+            if (!in_array($level, $statement->fetchAll(PDO::FETCH_COLUMN), true)) {
+                throw new ApiError(400, 'Wybierz poziom nauczania z oferty korepetytora.');
             }
             $statement = $pdo->prepare(
                 'SELECT start_time, end_time FROM bookings WHERE tutor_id = ? AND lesson_date = ? FOR UPDATE',
@@ -1070,10 +1229,10 @@ function handleApi(): never
             );
             $id = randomId();
             $insert = $pdo->prepare(
-                "INSERT INTO bookings (id, tutor_id, student_id, lesson_date, start_time, end_time, subject)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO bookings (id, tutor_id, student_id, lesson_date, start_time, end_time, subject, education_level)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             );
-            $insert->execute([$id, $tutorId, $user['id'], $date, $startTime, $endTime, $subject]);
+            $insert->execute([$id, $tutorId, $user['id'], $date, $startTime, $endTime, $subject, $level]);
             $pdo->commit();
             $booking = [
                 'id' => $id,
@@ -1083,6 +1242,7 @@ function handleApi(): never
                 'start_time' => $startTime,
                 'end_time' => $endTime,
                 'subject' => $subject,
+                'education_level' => $level,
                 'zoom_status' => 'pending',
                 'zoom_join_url' => '',
                 'zoom_start_url' => '',
@@ -1094,28 +1254,6 @@ function handleApi(): never
             throw $error;
         }
 
-        $statement = $pdo->prepare('SELECT * FROM users WHERE id = ?');
-        $statement->execute([$tutor['user_id']]);
-        $tutorUser = $statement->fetch();
-        $connectionCheck = $pdo->prepare('SELECT COUNT(*) FROM zoom_connections WHERE user_id = ?');
-        $connectionCheck->execute([$tutorUser['id'] ?? '']);
-        if ($tutorUser && (int)$connectionCheck->fetchColumn() > 0) {
-            try {
-                $meeting = createZoomMeeting($tutorUser, $booking, $tutor);
-                $statement = $pdo->prepare(
-                    "UPDATE bookings SET zoom_status = 'ready', zoom_meeting_id = ?, zoom_join_url = ?, zoom_start_url = ? WHERE id = ?",
-                );
-                $statement->execute([$meeting['id'], $meeting['joinUrl'], $meeting['startUrl'], $id]);
-                $booking['zoom_status'] = 'ready';
-                $booking['zoom_join_url'] = $meeting['joinUrl'];
-            } catch (Throwable $error) {
-                error_log('Nie udało się utworzyć spotkania Zoom dla rezerwacji ' . $id . ': ' . $error->getMessage());
-                $statement = $pdo->prepare("UPDATE bookings SET zoom_status = 'failed', zoom_error = ? WHERE id = ?");
-                $statement->execute([mb_substr($error->getMessage(), 0, 500), $id]);
-                $booking['zoom_status'] = 'failed';
-                $booking['zoom_error'] = $error->getMessage();
-            }
-        }
         sendJson(201, [
             'booking' => [
                 'id' => $booking['id'],
@@ -1125,6 +1263,7 @@ function handleApi(): never
                 'endTime' => substr($booking['end_time'], 0, 5),
                 'durationMinutes' => (string)LESSON_MINUTES,
                 'subject' => $booking['subject'],
+                'level' => $booking['education_level'],
                 'zoomStatus' => $booking['zoom_status'],
                 'zoomJoinUrl' => $booking['zoom_join_url'],
                 ...(!empty($booking['zoom_error']) ? ['zoomError' => $booking['zoom_error']] : []),
@@ -1240,6 +1379,7 @@ function handleApi(): never
                 'endTime' => substr((string)$row['end_time'], 0, 5),
                 'durationMinutes' => (string)$row['duration_minutes'],
                 'subject' => $row['subject'],
+                'level' => $row['education_level'],
                 'zoomStatus' => $row['zoom_status'],
                 'zoomStartUrl' => $row['zoom_start_url'],
                 'studentName' => $row['first_name'] . ' ' . $row['last_name'],
@@ -1376,16 +1516,10 @@ function handleApi(): never
         redirectTo(zoomAuthorizationUrl($state));
     }
     if ($method === 'GET' && $path === '/api/zoom/login') {
-        $role = (string)($_GET['role'] ?? '');
-        if (!in_array($role, ['student', 'tutor'], true)) {
-            throw new ApiError(400, 'Wybierz rolę ucznia lub korepetytora.');
-        }
-        if (!zoomConfigured()) {
-            throw new ApiError(503, 'Uzupełnij konfigurację OAuth Zoom w api/config.local.php.');
-        }
-        $state = bin2hex(random_bytes(32));
-        storeOAuthState($state, null, 'login', $role, safeReturnTo($_GET['returnTo'] ?? '/'));
-        redirectTo(zoomAuthorizationUrl($state));
+        throw new ApiError(410, 'Logowanie przez Zoom nie jest już obsługiwane. Użyj adresu e-mail i hasła.');
+    }
+    if ($method === 'GET' && $path === '/api/zoom/register') {
+        throw new ApiError(410, 'Rejestracja przez Zoom nie jest już obsługiwana. Użyj formularza rejestracji.');
     }
 
     throw new ApiError(404, 'Nie znaleziono endpointu API.');

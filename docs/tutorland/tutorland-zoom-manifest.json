@@ -6,16 +6,16 @@
   },
   "oauth_information": {
     "usage": "USER_OPERATION",
-    "development_redirect_uri": "https://tutorland.infinityfreeapp.com/api/zoom/callback",
+    "development_redirect_uri": "https://tutorland.infinityfree.io/api/zoom/callback",
     "production_redirect_uri": "",
     "oauth_allow_list": [
-      "https://tutorland.infinityfreeapp.com/api/zoom/callback"
+      "https://tutorland.infinityfree.io/api/zoom/callback"
     ],
     "strict_mode": true,
     "subdomain_strict_mode": false
   },
   "features": {
-    "development_home_uri": "https://tutorland.infinityfreeapp.com",
+    "development_home_uri": "https://tutorland.infinityfree.io",
     "production_home_uri": "",
     "in_client_feature": {
       "zoom_app_api": {

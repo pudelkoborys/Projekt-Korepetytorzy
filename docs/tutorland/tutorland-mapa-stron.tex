@@ -39,7 +39,7 @@
 \colorbox{pale}{\parbox{\dimexpr\textwidth-2\fboxsep\relax}{\textbf{Jak czytać dokument}\\
 Mapa opisuje aktualne widoki aplikacji. Część formularzy i podsekcji jest stanem jednej strony; trasy są obsługiwane przez frontend React.}}\par
 \vspace{12mm}
-{\small\color{muted}Struktura oparta na zakresie produktu Tutorland: uczniowie i korepetytorzy, rezerwacje 40-minutowe, Zoom, spotkania i opinie.}
+{\small\color{muted}Struktura oparta na zakresie produktu Tutorland: uczniowie i korepetytorzy, rezerwacje 40-minutowe i opinie.}
 \end{titlepage}
 
 \section{Strony publiczne}
@@ -60,12 +60,12 @@ Nr & Strona / przykładowa trasa & Dostęp & Zawartość i działanie\\
 \toprule
 Nr & Strona / przykładowa trasa & Dostęp & Zawartość i działanie\\
 \midrule
-3 & Rejestracja\newline \url{/register} & Gość & Utworzenie konta z wyborem roli ucznia lub korepetytora oraz walidacją danych.\\
-4 & Logowanie\newline \url{/login} & Gość & Logowanie z wyborem roli konta. Po logowaniu użytkownik trafia do odpowiedniego panelu lub wraca do strony profilu.\\
-5 & Spotkania i powiadomienia\newline \url{/notifications} & Uczeń / korepetytor & Własne nadchodzące i zakończone spotkania, status oraz link Zoom. Uczeń zarządza opiniami, korepetytor widzi rezerwacje i nowe opinie.\\
+3 & Rejestracja\newline \url{/register} & Gość & Utworzenie konta e-mail/hasło z wyborem roli ucznia lub korepetytora oraz walidacją danych.\\
+4 & Logowanie\newline \url{/login} & Gość & Logowanie adresem e-mail i hasłem. Rola konta jest rozpoznawana automatycznie.\\
+5 & Lekcje i powiadomienia\newline \url{/notifications} & Uczeń / korepetytor & Własne nadchodzące i zakończone lekcje. Uczeń zarządza opiniami, korepetytor widzi rezerwacje i nowe opinie. Linki do spotkań nie są obecnie tworzone.\\
 6 & Panel profilu i dostępności\newline \url{/profile} & Korepetytor & Edycja własnego profilu, ceny, przedmiotów i poziomów; tygodniowe godziny przez suwaki, kalendarz rezerwacji i dni wolne na kolejny miesiąc.\\
 7 & Opinia\newline Formularz w \url{/notifications} & Uczeń po lekcji & Ocena 1–5 oraz komentarz. Jedna aktywna opinia na korepetytora; można ją edytować, usunąć i po usunięciu dodać ponownie.\\
-8 & Połączenie z Zoom\newline \url{/api/zoom/connect} i \url{/api/zoom/callback} & Korepetytor & OAuth konta Zoom, pobranie dostępnego zdjęcia profilowego i utworzenie 40-minutowych spotkań. Wymaga konfiguracji aplikacji Zoom na serwerze.\\
+8 & Usunięcie konta\newline \url{/profile} & Uczeń / korepetytor & Trwałe usunięcie konta i powiązanych danych Tutorland.\\
 \bottomrule
 \end{tabularx}
 \normalsize

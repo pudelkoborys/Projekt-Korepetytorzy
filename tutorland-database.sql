@@ -34,11 +34,26 @@ CREATE TABLE IF NOT EXISTS tutor_profiles (
 
 CREATE TABLE IF NOT EXISTS tutor_subjects (
   tutor_id VARCHAR(100) NOT NULL,
-  subject VARCHAR(40) NOT NULL,
+  subject VARCHAR(80) NOT NULL,
   PRIMARY KEY (tutor_id, subject),
   CONSTRAINT fk_tutor_subjects_tutor FOREIGN KEY (tutor_id)
     REFERENCES tutor_profiles (tutor_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS subject_tags (
+  name VARCHAR(80) NOT NULL,
+  PRIMARY KEY (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO subject_tags (name) VALUES
+  ('Matematyka'), ('Fizyka'), ('Chemia'), ('Informatyka'), ('Angielski'),
+  ('Biologia'), ('Polski'), ('Historia'), ('Geografia'), ('WOS'),
+  ('Filozofia'), ('Ekonomia'), ('Język Niemiecki'), ('Język Francuski'),
+  ('Język Hiszpański'), ('Język Włoski'), ('Język Rosyjski'),
+  ('Język Polski Dla Obcokrajowców'), ('Przyroda'), ('Edukacja Wczesnoszkolna'),
+  ('Wiedza O Społeczeństwie'), ('Programowanie'), ('Algorytmika'), ('Statystyka'),
+  ('Rachunek Różniczkowy'), ('Elektrotechnika'), ('Mechanika'), ('Astronomia'),
+  ('Muzyka'), ('Plastyka'), ('Religia'), ('Etyka'), ('Łacina');
 
 CREATE TABLE IF NOT EXISTS tutor_levels (
   tutor_id VARCHAR(100) NOT NULL,
@@ -76,7 +91,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
   duration_minutes TINYINT UNSIGNED NOT NULL DEFAULT 40,
-  subject VARCHAR(40) NOT NULL,
+  subject VARCHAR(80) NOT NULL,
+  education_level ENUM('primary', 'secondary', 'tertiary') NOT NULL,
   zoom_status ENUM('pending', 'ready', 'failed') NOT NULL DEFAULT 'pending',
   zoom_meeting_id VARCHAR(64) NOT NULL DEFAULT '',
   zoom_join_url VARCHAR(2048) NOT NULL DEFAULT '',
@@ -126,7 +142,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS oauth_states (
   state_hash CHAR(64) NOT NULL,
   user_id CHAR(36) NULL,
-  purpose ENUM('connect', 'login') NOT NULL,
+  purpose ENUM('connect', 'login', 'register') NOT NULL,
   role ENUM('student', 'tutor') NOT NULL,
   return_to VARCHAR(2048) NOT NULL DEFAULT '/',
   expires_at DATETIME NOT NULL,

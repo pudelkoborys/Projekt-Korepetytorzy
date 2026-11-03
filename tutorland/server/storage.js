@@ -10,11 +10,12 @@ const seedDirectory = join(serverDirectory, 'seed')
 export const csvHeaders = {
   tutors: ['tutorId', 'firstName', 'lastName', 'age', 'teachingSinceYear', 'description', 'rating', 'pricePerLesson', 'levels', 'subjects', 'imagePath', 'email'],
   availability: ['tutorId', 'weekday', 'startTime', 'endTime'],
-  bookings: ['id', 'tutorId', 'studentId', 'studentEmail', 'date', 'startTime', 'endTime', 'durationMinutes', 'subject', 'zoomStatus', 'zoomJoinUrl', 'zoomStartUrl'],
+  bookings: ['id', 'tutorId', 'studentId', 'studentEmail', 'date', 'startTime', 'endTime', 'durationMinutes', 'subject', 'level', 'zoomStatus', 'zoomJoinUrl', 'zoomStartUrl'],
   reviews: ['id', 'studentId', 'studentEmail', 'tutorId', 'bookingId', 'rating', 'date', 'comment', 'updatedAt'],
   users: ['id', 'role', 'firstName', 'lastName', 'email', 'passwordHash', 'tutorId', 'createdAt'],
+  subjects: ['name'],
   sessions: ['tokenHash', 'userId', 'expiresAt'],
-  daysOff: ['tutorId', 'date'],
+  daysOff: ['tutorId', 'date', 'startTime', 'endTime'],
   oauthStates: ['stateHash', 'userId', 'purpose', 'role', 'returnTo', 'expiresAt'],
 }
 
@@ -26,6 +27,7 @@ export async function initializeStorage() {
     tutors: 'tutors.csv',
     availability: 'tutor_availability.csv',
     bookings: 'bookings.csv',
+    subjects: 'subjects.csv',
   }
 
   for (const [name, seedFile] of Object.entries(seedFiles)) {

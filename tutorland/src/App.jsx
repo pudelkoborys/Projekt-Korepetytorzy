@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, formatDate, formatTime } from './api.js'
+import { availableSlotsForDate } from './calendar.js'
+import { DEFAULT_SUBJECTS, formatSubjectName, subjectKey } from './subjects.js'
 import './App.css'
 
 const LEVELS = [
   { id: 'primary', label: 'Szkoła Podstawowa' },
   { id: 'secondary', label: 'Szkoła Średnia' },
   { id: 'tertiary', label: 'Studia' },
-]
-const SUBJECTS = [
-  'Matematyka', 'Fizyka', 'Chemia', 'Informatyka', 'Angielski', 'Biologia',
-  'Polski', 'Historia', 'Geografia', 'WOS', 'Filozofia', 'Ekonomia',
 ]
 const WEEKDAYS = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota']
 const CURRENT_YEAR = new Date().getFullYear()
@@ -66,6 +64,10 @@ function tutorClasses(tutor) {
   return (tutor.levels ?? []).slice().sort((a, b) => (
     LEVELS.findIndex((level) => level.id === a) - LEVELS.findIndex((level) => level.id === b)
   )).join('-') || 'primary'
+}
+
+function levelLabel(id) {
+  return LEVELS.find((level) => level.id === id)?.label ?? 'Poziom nieokreślony'
 }
 
 function Rating({ value }) {
@@ -135,7 +137,7 @@ function SiteHeader({ user, onLogout }) {
           </span>
           {user.role === 'tutor'
             ? <><a className="header-link" href="/profile">Mój profil</a><a className="header-link" href="/notifications">Powiadomienia</a></>
-            : <a className="header-link" href="/notifications">Powiadomienia</a>}
+            : <><a className="header-link" href="/profile">Mój profil</a><a className="header-link" href="/notifications">Powiadomienia</a></>}
           <button className="header-button" type="button" onClick={onLogout}>Wyloguj</button>
         </nav>
       ) : (
@@ -315,6 +317,7 @@ function Calendar({ tutor, user }) {
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedTime, setSelectedTime] = useState('')
   const [subject, setSubject] = useState(tutor.subjects[0] ?? '')
+  const [level, setLevel] = useState(tutor.levels[0] ?? '')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -328,27 +331,7 @@ function Calendar({ tutor, user }) {
   }, [month, tutor.tutorId])
 
   const days = getMonthDates(month)
-  const slots = selectedDate ? (() => {
-    if (data.daysOff.some((item) => item.date === selectedDate)) return []
-    const weekday = String(new Date(`${selectedDate}T12:00:00`).getDay())
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    const currentMinutes = now.getHours() * 60 + now.getMinutes()
-    const result = []
-    for (const range of data.availability.filter((item) => item.weekday === weekday)) {
-      const from = timeMinutes(range.startTime)
-      const until = timeMinutes(range.endTime)
-      for (let start = from; start + 40 <= until; start += 40) {
-        const busy = data.busy.some((booking) => (
-          booking.date === selectedDate
-          && start < timeMinutes(booking.endTime)
-          && timeMinutes(booking.startTime) < start + 40
-        ))
-        const past = selectedDate < today || selectedDate === today && start <= currentMinutes
-        if (!busy && !past) result.push(formatTime(start))
-      }
-    }
-    return [...new Set(result)]
-  })() : []
+  const slots = selectedDate ? availableSlotsForDate(selectedDate, data, now) : []
 
   async function book() {
     setError('')
@@ -363,13 +346,11 @@ function Calendar({ tutor, user }) {
     }
     setSaving(true)
     try {
-      const result = await api('/bookings', {
+      await api('/bookings', {
         method: 'POST',
-        body: { tutorId: tutor.tutorId, date: selectedDate, startTime: selectedTime, subject },
+        body: { tutorId: tutor.tutorId, date: selectedDate, startTime: selectedTime, subject, level },
       })
-      setMessage(result.booking.zoomStatus === 'ready'
-        ? `Spotkanie zapisane. Link Zoom jest dostępny w powiadomieniach.`
-        : 'Termin zapisany. Link do Zoom pojawi się po połączeniu konta korepetytora.')
+      setMessage('Termin został zapisany. Aplikacja nie tworzy obecnie linków do spotkań.')
       setSelectedTime('')
       const refreshed = await api(`/tutors/${encodeURIComponent(tutor.tutorId)}/availability?month=${month}`)
       setData(refreshed)
@@ -408,11 +389,7 @@ function Calendar({ tutor, user }) {
           <div className="calendar-grid">
             {days.map((date, index) => {
               if (!date) return <span className="calendar-empty" key={`empty-${index}`} />
-              const weekday = String(new Date(`${date}T12:00:00`).getDay())
-              const hasRange = data.availability.some((range) => range.weekday === weekday)
-              const isFree = hasRange
-                && !data.daysOff.some((item) => item.date === date)
-                && data.busy.filter((booking) => booking.date === date).length < 8
+              const isFree = availableSlotsForDate(date, data, now).length > 0
               return (
                 <button
                   className={`calendar-day${isFree ? ' is-available' : ''}${selectedDate === date ? ' is-active' : ''}`}
@@ -459,8 +436,13 @@ function Calendar({ tutor, user }) {
                   <select id="booking-subject" value={subject} onChange={(event) => setSubject(event.target.value)}>
                     {tutor.subjects.map((item) => <option key={item}>{item}</option>)}
                   </select>
+                  <label className="booking-form-label" htmlFor="booking-level">Poziom nauczania</label>
+                  <select id="booking-level" value={level} onChange={(event) => setLevel(event.target.value)} required>
+                    <option value="">Wybierz poziom</option>
+                    {tutor.levels.map((item) => <option key={item} value={item}>{levelLabel(item)}</option>)}
+                  </select>
                   {user?.role === 'student'
-                    ? <button className="book-button" type="button" disabled={saving} onClick={book}>{saving ? 'Zapisywanie…' : 'Zarezerwuj lekcję'}</button>
+                    ? <button className="book-button" type="button" disabled={saving || !level} onClick={book}>{saving ? 'Zapisywanie…' : 'Zarezerwuj lekcję'}</button>
                     : <button className="book-button" type="button" onClick={book}>{user ? 'Konto ucznia jest wymagane' : 'Zaloguj się, aby zarezerwować'}</button>}
                 </div>
               )}
@@ -536,49 +518,34 @@ function TutorProfile({ tutorId, user }) {
   )
 }
 
-function AuthPage({ type, onAuthenticated }) {
+function AuthPage({ type, initialError = '' }) {
   const isRegister = type === 'register'
   const [role, setRole] = useState('student')
-  const [error, setError] = useState(() => {
-    const zoomError = new URLSearchParams(window.location.search).get('zoomError')
-    if (zoomError === 'account-not-found') {
-      return 'Nie znaleziono konta Tutorland powiązanego z tym adresem e-mail Zoom. Najpierw załóż konto.'
-    }
-    if (zoomError === 'cancelled') return 'Logowanie przez Zoom zostało anulowane.'
-    return ''
-  })
-  const [busy, setBusy] = useState(false)
-  const [zoomAvailable, setZoomAvailable] = useState(false)
+  const [error, setError] = useState(initialError)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const returnTo = params.get('returnTo')
   const safeReturnTo = returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/'
 
-  useEffect(() => {
-    api('/auth/providers')
-      .then((providers) => setZoomAvailable(providers.zoom))
-      .catch((failure) => setError(failure.message))
-  }, [])
-
-  async function submit(event) {
+  async function submitAuth(event) {
     event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    const body = Object.fromEntries(formData.entries())
+    if (isRegister) body.role = role
+    setIsSubmitting(true)
     setError('')
-    setBusy(true)
-    const values = new FormData(event.currentTarget)
-    const body = Object.fromEntries(values.entries())
-    body.role = role
     try {
-      const result = await api(isRegister ? '/auth/register' : '/auth/login', { method: 'POST', body })
-      const shouldConnectZoom = role === 'tutor'
-        && result.zoomConfigured
-        && !result.zoomConnected
-      const nextPath = shouldConnectZoom
-        ? '/api/zoom/connect'
-        : isRegister && role === 'tutor' ? '/profile' : safeReturnTo
-      onAuthenticated(result.user, nextPath)
+      const result = await api(`/auth/${isRegister ? 'register' : 'login'}`, {
+        method: 'POST',
+        body,
+      })
+      const destination = isRegister && result.user.role === 'tutor'
+        ? '/profile?complete=1'
+        : safeReturnTo
+      window.location.assign(destination)
     } catch (failure) {
       setError(failure.message)
-    } finally {
-      setBusy(false)
+      setIsSubmitting(false)
     }
   }
 
@@ -587,37 +554,141 @@ function AuthPage({ type, onAuthenticated }) {
       <section className="auth-card">
         <p className="eyebrow">Tutorland</p>
         <h1>{isRegister ? 'Załóż konto' : 'Zaloguj się'}</h1>
-        <p className="auth-intro">{isRegister ? 'Dołącz jako uczeń lub korepetytor.' : 'Zaloguj się, aby przejść do swojego konta.'}</p>
-        <form className="auth-form" onSubmit={submit}>
-          <fieldset className="role-choice">
-            <legend>{isRegister ? 'Kim jesteś?' : 'Zaloguj się jako'}</legend>
-            <label><input type="radio" name="role-choice" checked={role === 'student'} onChange={() => setRole('student')} /> Uczeń</label>
-            <label><input type="radio" name="role-choice" checked={role === 'tutor'} onChange={() => setRole('tutor')} /> Korepetytor</label>
-          </fieldset>
+        <p className="auth-intro">
+          {isRegister
+            ? 'Utwórz konto za pomocą adresu e-mail i hasła.'
+            : 'Zaloguj się za pomocą adresu e-mail i hasła.'}
+        </p>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <form className="auth-form" onSubmit={submitAuth}>
           {isRegister && (
             <>
-              <label>Imię<input name="firstName" autoComplete="given-name" required minLength="2" maxLength="80" /></label>
-              <label>Nazwisko<input name="lastName" autoComplete="family-name" required minLength="2" maxLength="80" /></label>
+              <fieldset className="role-choice">
+                <legend>Dołącz jako</legend>
+                <label><input type="radio" name="role-choice" checked={role === 'student'} onChange={() => setRole('student')} /> Uczeń</label>
+                <label><input type="radio" name="role-choice" checked={role === 'tutor'} onChange={() => setRole('tutor')} /> Korepetytor</label>
+              </fieldset>
+              <label>Imię
+                <input name="firstName" required minLength="2" maxLength="80" autoComplete="given-name" />
+              </label>
+              <label>Nazwisko
+                <input name="lastName" required minLength="2" maxLength="80" autoComplete="family-name" />
+              </label>
             </>
           )}
-          <label>Adres e-mail<input type="email" name="email" autoComplete="email" required maxLength="254" /></label>
-          <label>Hasło<input type="password" name="password" autoComplete={isRegister ? 'new-password' : 'current-password'} required minLength={isRegister ? 10 : 1} maxLength="128" /></label>
-          {isRegister && <p className="form-hint">Hasło musi mieć co najmniej 10 znaków.</p>}
-          {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="book-button" type="submit" disabled={busy}>{busy ? 'Proszę czekać…' : isRegister ? 'Zarejestruj' : 'Zaloguj'}</button>
+          <label>Adres e-mail
+            <input name="email" type="email" required maxLength="254" autoComplete="email" />
+          </label>
+          <label>Hasło
+            <input
+              name="password"
+              type="password"
+              required
+              minLength="8"
+              maxLength="256"
+              autoComplete={isRegister ? 'new-password' : 'current-password'}
+            />
+          </label>
+          <button className="book-button" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Trwa logowanie…' : isRegister ? 'Utwórz konto' : 'Zaloguj się'}
+          </button>
         </form>
-        {!isRegister && (zoomAvailable
-          ? <a
-            className="zoom-login-button"
-            href={`/api/zoom/login?role=${role}&returnTo=${encodeURIComponent(safeReturnTo)}`}
-          >Zaloguj przez Zoom</a>
-          : <p className="form-hint">Logowanie Zoom będzie dostępne po skonfigurowaniu aplikacji Zoom na serwerze.</p>)}
         <p className="auth-switch">
           {isRegister ? 'Masz już konto? ' : 'Nie masz jeszcze konta? '}
           <a href={`${isRegister ? '/login' : '/register'}${returnTo ? `?returnTo=${encodeURIComponent(safeReturnTo)}` : ''}`}>
             {isRegister ? 'Zaloguj się' : 'Zarejestruj się'}
           </a>
         </p>
+      </section>
+    </main>
+  )
+}
+
+function DeleteAccountSection({ role }) {
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+
+  async function deleteAccount() {
+    const dataDescription = role === 'tutor'
+      ? 'Twój profil korepetytora, dostępność, rezerwacje i opinie zostaną trwale usunięte.'
+      : 'Twoje rezerwacje i opinie zostaną trwale usunięte.'
+    const confirmed = window.confirm(
+      `${dataDescription}\n\nTej operacji nie można cofnąć. Spotkania w zewnętrznych kalendarzach nie zostaną odwołane automatycznie. Czy na pewno usunąć konto?`,
+    )
+    if (!confirmed) return
+
+    setDeleting(true)
+    setError('')
+    try {
+      await api('/auth/delete-account', { method: 'POST' })
+      window.location.assign('/')
+    } catch (failure) {
+      setError(failure.message)
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="delete-account">
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <button className="text-button text-button--danger" type="button" disabled={deleting} onClick={deleteAccount}>
+        {deleting ? 'Usuwanie konta…' : 'Usuń konto'}
+      </button>
+    </div>
+  )
+}
+
+function StudentProfile({ onUserChanged }) {
+  const [profile, setProfile] = useState(null)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    api('/student/profile')
+      .then((result) => { if (active) setProfile(result.profile) })
+      .catch((failure) => { if (active) setError(failure.message) })
+    return () => { active = false }
+  }, [])
+
+  async function saveProfile(event) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    setMessage('')
+    const values = new FormData(event.currentTarget)
+    try {
+      await api('/student/profile', {
+        method: 'PUT',
+        body: { firstName: values.get('firstName'), lastName: values.get('lastName') },
+      })
+      await onUserChanged()
+      setMessage('Profil został zapisany.')
+    } catch (failure) {
+      setError(failure.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!profile) return <main className="main-content"><div className={error ? 'message-state message-state--error' : 'message-state'} role={error ? 'alert' : 'status'}>{error || 'Wczytywanie profilu…'}</div></main>
+  return (
+    <main className="main-content dashboard-page">
+      <div className="section-heading"><div><p className="eyebrow">Twoje konto ucznia</p><h1>Mój profil</h1></div></div>
+      <section className="dashboard-panel profile-editor">
+        <p className="form-hint">Uzupełnij lub zmień dane wyświetlane na Twoim profilu. Uczniowie nie mają zdjęć profilowych.</p>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        {message && <p className="booking-confirmation" role="status">{message}</p>}
+        <form className="auth-form" onSubmit={saveProfile}>
+          <label>Imię<input name="firstName" defaultValue={profile.firstName} autoComplete="given-name" required minLength="2" maxLength="80" /></label>
+          <label>Nazwisko<input name="lastName" defaultValue={profile.lastName} autoComplete="family-name" required minLength="2" maxLength="80" /></label>
+          <button className="book-button" type="submit" disabled={saving}>{saving ? 'Zapisywanie…' : 'Zapisz profil'}</button>
+        </form>
+      </section>
+      <section className="dashboard-panel">
+        <h2>Usuwanie konta</h2>
+        <DeleteAccountSection role="student" />
       </section>
     </main>
   )
@@ -689,7 +760,7 @@ function StudentDashboard() {
   const orderedBookings = bookings.slice().sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`))
   return (
     <main className="main-content dashboard-page">
-      <div className="section-heading"><div><p className="eyebrow">Twoje konto</p><h1>Powiadomienia i spotkania</h1></div></div>
+      <div className="section-heading"><div><p className="eyebrow">Twoje konto</p><h1>Powiadomienia i lekcje</h1></div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
       <section className="dashboard-panel">
         <h2>Zaplanowane lekcje</h2>
@@ -701,11 +772,9 @@ function StudentDashboard() {
                 <article className="notification-card" key={booking.id}>
                   <div>
                     <p className="eyebrow">{booking.isPast ? 'Zakończona lekcja' : 'Zaplanowana lekcja'}</p>
-                    <h3>{booking.subject} · {formatDate(booking.date)} o {booking.startTime}</h3>
+                    <h3>{booking.subject} · {levelLabel(booking.level)} · {formatDate(booking.date)} o {booking.startTime}</h3>
                     <p>Korepetytor: <a href={`/?tutor=${encodeURIComponent(booking.tutorId)}`}>{booking.tutorName || 'Zobacz profil'}</a></p>
-                    {booking.zoomJoinUrl
-                      ? <a className="zoom-link" href={booking.zoomJoinUrl} target="_blank" rel="noreferrer">Dołącz do spotkania Zoom</a>
-                      : <p className="form-hint">{booking.zoomStatus === 'failed' ? 'Nie udało się utworzyć spotkania Zoom. Powiadom korepetytora.' : 'Oczekiwanie na połączenie konta Zoom przez korepetytora.'}</p>}
+                    {!booking.isPast && <p className="form-hint">Link do spotkania nie jest obecnie dostępny.</p>}
                     {booking.isPast && (review
                       ? <button className="text-button" type="button" onClick={() => setDraft({ ...review })}>Edytuj swoją opinię</button>
                       : <button className="text-button" type="button" onClick={() => setDraft({ bookingId: booking.id, tutorId: booking.tutorId })}>Wystaw opinię</button>)}
@@ -774,27 +843,36 @@ function defaultSchedule() {
 
 function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
   const [profile, setProfile] = useState(null)
+  const [availableSubjects, setAvailableSubjects] = useState(DEFAULT_SUBJECTS)
+  const [profileSubjects, setProfileSubjects] = useState([])
+  const [subjectSearch, setSubjectSearch] = useState('')
+  const [savingSubject, setSavingSubject] = useState(false)
   const [days, setDays] = useState(defaultSchedule)
   const [daysOff, setDaysOff] = useState([])
   const [bookings, setBookings] = useState([])
   const [reviews, setReviews] = useState([])
-  const [zoom, setZoom] = useState({ configured: false, connected: false })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [offMonth, setOffMonth] = useState(() => getMonth(1))
   const [currentMonth] = useState(getMonth)
   const [savingDaysOff, setSavingDaysOff] = useState(false)
+  const [editingDayOff, setEditingDayOff] = useState('')
+  const [dayOffType, setDayOffType] = useState('full')
+  const [dayOffStartTime, setDayOffStartTime] = useState('09:00')
+  const [dayOffEndTime, setDayOffEndTime] = useState('13:00')
 
   async function loadDashboard() {
     try {
-      const [profileResult, scheduleResult, notifications, zoomStatus] = await Promise.all([
+      const [profileResult, scheduleResult, notifications, subjectResult] = await Promise.all([
         api('/tutor/profile'),
         api('/tutor/availability'),
         api('/tutor/notifications'),
-        api('/zoom/status'),
+        api('/subjects'),
       ])
       setProfile(profileResult.tutor)
+      setProfileSubjects(profileResult.tutor.subjects)
+      setAvailableSubjects(subjectResult.subjects)
       setDays(defaultSchedule().map((day) => {
         const range = daySchedule(scheduleResult.weekly, day.weekday)
         return range
@@ -804,7 +882,6 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
       setDaysOff(scheduleResult.daysOff)
       setBookings(notifications.bookings)
       setReviews(notifications.reviews)
-      setZoom(zoomStatus)
       setError('')
     } catch (failure) {
       setError(failure.message)
@@ -817,11 +894,13 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
       api('/tutor/profile'),
       api('/tutor/availability'),
       api('/tutor/notifications'),
-      api('/zoom/status'),
+      api('/subjects'),
     ])
-      .then(([profileResult, scheduleResult, notifications, zoomStatus]) => {
+      .then(([profileResult, scheduleResult, notifications, subjectResult]) => {
         if (!active) return
         setProfile(profileResult.tutor)
+        setProfileSubjects(profileResult.tutor.subjects)
+        setAvailableSubjects(subjectResult.subjects)
         setDays(defaultSchedule().map((day) => {
           const range = daySchedule(scheduleResult.weekly, day.weekday)
           return range
@@ -831,7 +910,6 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
         setDaysOff(scheduleResult.daysOff)
         setBookings(notifications.bookings)
         setReviews(notifications.reviews)
-        setZoom(zoomStatus)
       })
       .catch((failure) => {
         if (active) setError(failure.message)
@@ -846,7 +924,6 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
     setError('')
     setMessage('')
     const values = new FormData(event.currentTarget)
-    const subjectValues = values.getAll('subjects')
     const levelValues = values.getAll('levels')
     try {
       await api('/tutor/profile', {
@@ -857,7 +934,7 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
           description: values.get('description'),
           pricePerLesson: Number(values.get('pricePerLesson')),
           teachingSinceYear: Number(values.get('teachingSinceYear')),
-          subjects: subjectValues,
+          subjects: profileSubjects,
           levels: levelValues,
         },
       })
@@ -871,6 +948,32 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
     }
   }
 
+  async function addProfileSubject(event) {
+    event.preventDefault()
+    const name = formatSubjectName(subjectSearch)
+    if (!name) return
+    const existing = availableSubjects.find((subject) => subjectKey(subject) === subjectKey(name))
+    if (profileSubjects.some((subject) => subjectKey(subject) === subjectKey(name))) {
+      setSubjectSearch('')
+      return
+    }
+
+    setSavingSubject(true)
+    setError('')
+    try {
+      const result = existing
+        ? { subject: existing }
+        : await api('/subjects', { method: 'POST', body: { name } })
+      setAvailableSubjects((current) => [...current.filter((subject) => subjectKey(subject) !== subjectKey(result.subject)), result.subject])
+      setProfileSubjects((current) => [...current, result.subject])
+      setSubjectSearch('')
+    } catch (failure) {
+      setError(failure.message)
+    } finally {
+      setSavingSubject(false)
+    }
+  }
+
   function updateDay(weekday, changes) {
     setDays((current) => current.map((day) => day.weekday === weekday ? { ...day, ...changes } : day))
   }
@@ -879,6 +982,7 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
     const [year, monthNumber] = offMonth.split('-').map(Number)
     const next = new Date(year, monthNumber - 1 + amount, 1, 12)
     setOffMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`)
+    setEditingDayOff('')
   }
 
   async function saveSchedule() {
@@ -903,14 +1007,44 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
     }
   }
 
-  async function toggleDayOff(date) {
-    const next = daysOff.includes(date) ? daysOff.filter((value) => value !== date) : [...daysOff, date]
+  function editDayOff(date) {
+    const existing = daysOff.find((day) => day.date === date)
+    const weekday = new Date(`${date}T12:00:00`).getDay()
+    const regularHours = daySchedule(days.filter((day) => day.enabled), weekday)
+    setEditingDayOff(date)
+    setDayOffType(existing?.startTime && existing?.endTime ? 'hours' : 'full')
+    setDayOffStartTime(existing?.startTime || regularHours?.startTime || '09:00')
+    setDayOffEndTime(existing?.endTime || regularHours?.endTime || '13:00')
+  }
+
+  async function saveDayOff() {
+    const updatedDay = dayOffType === 'hours'
+      ? { date: editingDayOff, startTime: dayOffStartTime, endTime: dayOffEndTime }
+      : { date: editingDayOff, startTime: '', endTime: '' }
+    const next = [...daysOff.filter((day) => day.date !== editingDayOff), updatedDay]
     setSavingDaysOff(true)
     setError('')
     try {
       const weekly = days.filter((day) => day.enabled).map(({ weekday, startTime, endTime }) => ({ weekday, startTime, endTime }))
       await api('/tutor/availability', { method: 'PUT', body: { weekly, daysOff: next } })
       setDaysOff(next)
+      setEditingDayOff('')
+    } catch (failure) {
+      setError(failure.message)
+    } finally {
+      setSavingDaysOff(false)
+    }
+  }
+
+  async function removeDayOff() {
+    const next = daysOff.filter((day) => day.date !== editingDayOff)
+    setSavingDaysOff(true)
+    setError('')
+    try {
+      const weekly = days.filter((day) => day.enabled).map(({ weekday, startTime, endTime }) => ({ weekday, startTime, endTime }))
+      await api('/tutor/availability', { method: 'PUT', body: { weekly, daysOff: next } })
+      setDaysOff(next)
+      setEditingDayOff('')
     } catch (failure) {
       setError(failure.message)
     } finally {
@@ -925,17 +1059,16 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
   if (notificationsOnly) {
     return (
       <main className="main-content dashboard-page">
-        <div className="section-heading"><div><p className="eyebrow">Panel korepetytora</p><h1>Powiadomienia i spotkania</h1></div></div>
+        <div className="section-heading"><div><p className="eyebrow">Panel korepetytora</p><h1>Powiadomienia i lekcje</h1></div></div>
         {error && <p className="form-error" role="alert">{error}</p>}
         <section className="dashboard-panel">
           <h2>Zaplanowane lekcje</h2>
           {sortedBookings.length ? <div className="notification-list">{sortedBookings.map((booking) => (
             <article className="notification-card" key={booking.id}>
               <p className="eyebrow">{booking.isPast ? 'Zakończona lekcja' : 'Zaplanowana lekcja'}</p>
-              <h3>{booking.subject} · {formatDate(booking.date)} o {booking.startTime}</h3>
+              <h3>{booking.subject} · {levelLabel(booking.level)} · {formatDate(booking.date)} o {booking.startTime}</h3>
               <p>Uczeń: {booking.studentName}</p>
-              {booking.zoomStartUrl && <a className="zoom-link" href={booking.zoomStartUrl} target="_blank" rel="noreferrer">Rozpocznij spotkanie Zoom</a>}
-              {booking.zoomStatus === 'pending' && <p className="form-hint">Oczekiwanie na połączenie Zoom; spotkanie zostanie utworzone automatycznie.</p>}
+              {!booking.isPast && <p className="form-hint">Link do spotkania nie jest obecnie dostępny.</p>}
             </article>
           ))}</div> : <p className="no-reviews">Nie masz jeszcze rezerwacji.</p>}
         </section>
@@ -969,12 +1102,41 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
             <label>Opis<textarea name="description" defaultValue={profile.description} required minLength="20" maxLength="2000" rows="4" /></label>
             <label>Cena za 40-minutową lekcję (zł)<input name="pricePerLesson" type="number" min="20" max="1000" defaultValue={profile.pricePerLesson} required /></label>
             <label>Uczę od roku<input name="teachingSinceYear" type="number" min="1950" max={CURRENT_YEAR} defaultValue={profile.teachingSinceYear} required /></label>
-            <fieldset className="selection-fieldset"><legend>Przedmioty</legend>
-              {SUBJECTS.map((subject) => (
-                <label className="check-option" key={subject}>
-                  <input type="checkbox" name="subjects" value={subject} defaultChecked={profile.subjects.includes(subject)} />{subject}
-                </label>
-              ))}
+            <fieldset className="selection-fieldset subject-editor">
+              <legend>Przedmioty</legend>
+              <ul className="subject-tags subject-editor-tags">
+                {profileSubjects.map((subject) => (
+                  <li key={subject}>
+                    <span className="subject-tag">{subject}</span>
+                    <button
+                      type="button"
+                      className="subject-remove"
+                      aria-label={`Usuń tag ${subject}`}
+                      onClick={() => setProfileSubjects((current) => current.filter((value) => value !== subject))}
+                    >×</button>
+                  </li>
+                ))}
+              </ul>
+              <label htmlFor="subject-search">Wyszukaj lub utwórz tag</label>
+              <div className="subject-search-row">
+                <input
+                  id="subject-search"
+                  list="subject-catalog"
+                  value={subjectSearch}
+                  maxLength="80"
+                  onChange={(event) => setSubjectSearch(formatSubjectName(event.target.value))}
+                  placeholder="np. Język angielski"
+                />
+                <datalist id="subject-catalog">
+                  {availableSubjects
+                    .filter((subject) => !profileSubjects.some((selected) => subjectKey(selected) === subjectKey(subject)))
+                    .map((subject) => <option key={subject} value={subject} />)}
+                </datalist>
+                <button className="text-button" type="button" disabled={!subjectSearch.trim() || savingSubject} onClick={addProfileSubject}>
+                  {savingSubject ? 'Dodawanie…' : 'Dodaj'}
+                </button>
+              </div>
+              <p className="form-hint">Nowy tag będzie dostępny dla wszystkich korepetytorów.</p>
             </fieldset>
             <fieldset className="selection-fieldset"><legend>Poziomy nauczania</legend>
               {LEVELS.map((level) => (
@@ -985,6 +1147,10 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
             </fieldset>
             <button className="book-button" type="submit" disabled={saving}>{saving ? 'Zapisywanie…' : 'Zapisz profil'}</button>
           </form>
+          <div className="account-delete-divider">
+            <h3>Usuwanie konta</h3>
+            <DeleteAccountSection role="tutor" />
+          </div>
         </section>
 
         <section className="dashboard-panel schedule-panel">
@@ -1042,26 +1208,55 @@ function TutorDashboard({ onUserChanged, notificationsOnly = false }) {
             <div className="calendar-grid calendar-weekdays" aria-hidden="true">{['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'].map((day) => <span key={day}>{day}</span>)}</div>
             <div className="calendar-grid">
               {nextMonthDates.map((date, index) => date
-                ? <button
-                  className={`calendar-day${daysOff.includes(date) ? ' is-day-off' : ''}`}
-                  key={date}
-                  type="button"
-                  disabled={savingDaysOff}
-                  aria-pressed={daysOff.includes(date)}
-                  onClick={() => toggleDayOff(date)}
-                >{Number(date.slice(-2))}</button>
+                ? (() => {
+                  const dayOff = daysOff.find((day) => day.date === date)
+                  const hasSpecialHours = dayOff?.startTime && dayOff?.endTime
+                  return <button
+                    className={`calendar-day${dayOff ? hasSpecialHours ? ' is-special-hours' : ' is-day-off' : ''}${editingDayOff === date ? ' is-active' : ''}`}
+                    key={date}
+                    type="button"
+                    disabled={savingDaysOff}
+                    aria-label={`${formatDate(date)}${hasSpecialHours ? `, dostępność ${dayOff.startTime}–${dayOff.endTime}` : dayOff ? ', cały dzień wolny' : ', normalny grafik'}`}
+                    aria-pressed={Boolean(dayOff)}
+                    onClick={() => editDayOff(date)}
+                  >{Number(date.slice(-2))}</button>
+                })()
                 : <span className="calendar-empty" key={`next-month-${index}`} />)}
             </div>
-            <p className="calendar-note">Kliknij dzień, aby oznaczyć lub odwołać „Dzień wolny”.</p>
-          </div>
-          <div className="zoom-connect">
-            <h2>Połącz konto Zoom</h2>
-            <p>{zoom.connected ? 'Konto Zoom jest połączone.' : 'Połącz konto Zoom, aby automatycznie tworzyć spotkania i pobrać zdjęcie profilowe.'}</p>
-            {zoom.connected
-              ? <span className="status-pill">Połączono</span>
-              : zoom.configured
-                ? <a className="book-button" href="/api/zoom/connect">Połącz z Zoom</a>
-                : <p className="form-hint">Administrator serwera musi najpierw skonfigurować dane aplikacji Zoom.</p>}
+            <div className="calendar-legend calendar-legend--availability">
+              <span className="calendar-legend-item"><i className="calendar-legend-dot calendar-legend-dot--regular" /> Normalny grafik</span>
+              <span className="calendar-legend-item"><i className="calendar-legend-dot calendar-legend-dot--off" /> Cały dzień wolny</span>
+              <span className="calendar-legend-item"><i className="calendar-legend-dot calendar-legend-dot--special" /> Inne godziny</span>
+            </div>
+            <p className="calendar-note">Kliknij datę, aby ustawić cały dzień wolny albo godziny dostępności inne niż zwykle.</p>
+            {editingDayOff && (
+              <div className="day-off-editor">
+                <h3>{formatDate(editingDayOff)}</h3>
+                <label className="check-option">
+                  <input type="radio" name="day-off-type" value="full" checked={dayOffType === 'full'} onChange={() => setDayOffType('full')} />
+                  Cały dzień wolny
+                </label>
+                <label className="check-option">
+                  <input type="radio" name="day-off-type" value="hours" checked={dayOffType === 'hours'} onChange={() => setDayOffType('hours')} />
+                  Lekcje tylko w wybranym przedziale
+                </label>
+                {dayOffType === 'hours' && (
+                  <div className="day-off-time-range">
+                    <label>Od<input type="time" value={dayOffStartTime} required onChange={(event) => setDayOffStartTime(event.target.value)} /></label>
+                    <label>Do<input type="time" value={dayOffEndTime} required onChange={(event) => setDayOffEndTime(event.target.value)} /></label>
+                  </div>
+                )}
+                <div className="form-actions">
+                  <button className="book-button" type="button" disabled={savingDaysOff} onClick={saveDayOff}>
+                    {savingDaysOff ? 'Zapisywanie…' : 'Zapisz dzień'}
+                  </button>
+                  {daysOff.some((day) => day.date === editingDayOff) && (
+                    <button className="text-button text-button--danger" type="button" disabled={savingDaysOff} onClick={removeDayOff}>Usuń oznaczenie</button>
+                  )}
+                  <button className="header-button header-button--quiet" type="button" onClick={() => setEditingDayOff('')}>Anuluj</button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -1078,6 +1273,7 @@ function App() {
   const params = new URLSearchParams(window.location.search)
   const selectedTutorId = params.get('tutor')
   const route = window.location.pathname
+  const isAuthRoute = ['/login', '/logowanie', '/register', '/rejestracja'].includes(route)
 
   useEffect(() => {
     api('/auth/me')
@@ -1109,12 +1305,7 @@ function App() {
     setUser(result.user)
   }
 
-  function onAuthenticated(nextUser, nextPath) {
-    setUser(nextUser)
-    window.location.assign(nextPath)
-  }
-
-  if (user === undefined) {
+  if (user === undefined && !isAuthRoute) {
     return <main className="main-content"><div className={authError ? 'message-state message-state--error' : 'message-state'} role={authError ? 'alert' : 'status'}>{authError || 'Wczytywanie Tutorland…'}</div></main>
   }
 
@@ -1124,13 +1315,15 @@ function App() {
       <div className="main-column">
         <SiteHeader user={user} onLogout={logout} />
         {route === '/login' || route === '/logowanie'
-          ? <AuthPage type="login" onAuthenticated={onAuthenticated} />
+          ? <AuthPage type="login" initialError={authError} />
           : route === '/register' || route === '/rejestracja'
-            ? <AuthPage type="register" onAuthenticated={onAuthenticated} />
+            ? <AuthPage type="register" initialError={authError} />
             : isTutorHome
               ? <TutorDashboard onUserChanged={refreshUser} />
               : route === '/profile' && user?.role !== 'tutor'
-                ? <main className="main-content"><div className="message-state" role="status">Ta strona jest dostępna dla korepetytora.</div></main>
+                  ? user?.role === 'student'
+                    ? <StudentProfile onUserChanged={refreshUser} />
+                    : <main className="main-content"><div className="message-state" role="status">Zaloguj się, aby edytować profil.</div></main>
                 : route === '/notifications' && user?.role === 'student'
                   ? <StudentDashboard />
                   : route === '/notifications' && user?.role === 'tutor'

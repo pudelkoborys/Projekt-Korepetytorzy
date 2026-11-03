@@ -9,11 +9,6 @@ return [
         'password' => 'YOUR_MYSQL_PASSWORD',
         'charset' => 'utf8mb4',
     ],
-    'app_origin' => 'https://tutorland.infinityfreeapp.com',
+    'app_origin' => 'https://tutorland.infinityfree.io',
     'timezone' => 'Europe/Warsaw',
-    'zoom' => [
-        'client_id' => '',
-        'client_secret' => '',
-        'token_encryption_key' => '',
-    ],
 ];
