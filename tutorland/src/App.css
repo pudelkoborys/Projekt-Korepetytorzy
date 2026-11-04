@@ -256,6 +256,8 @@
 }
 
 .page-header {
+  position: relative;
+  z-index: 2;
   display: flex;
   min-height: 88px;
   align-items: center;
@@ -364,18 +366,6 @@
 .level-tag--tertiary {
   border-color: var(--level-tertiary-border);
   background: var(--level-tertiary-background);
-}
-
-.level-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0;
-}
-
-.is-selected .level-indicator {
-  opacity: 0.65;
 }
 
 .level-hint {
@@ -523,6 +513,16 @@
   padding: 10px 13px 8px;
 }
 
+.tutor-details-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tutor-details-link:focus-visible {
+  outline: 3px solid var(--button-color);
+  outline-offset: -3px;
+}
+
 .tutor-topline {
   display: flex;
   align-items: start;
@@ -540,38 +540,6 @@
   margin: 4px 0 0;
   color: var(--muted-color);
   font-size: 0.78rem;
-}
-
-.tutor-rating {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 6px;
-  padding-top: 2px;
-}
-
-.rating-stars {
-  display: inline-flex;
-  gap: 1px;
-  color: #b9bbc2;
-  font-size: 0.95rem;
-  letter-spacing: 0.02em;
-  line-height: 1;
-}
-
-.star--filled {
-  color: #d8ad43;
-}
-
-.star--half {
-  background: linear-gradient(90deg, #d8ad43 50%, #b9bbc2 50%);
-  background-clip: text;
-  color: transparent;
-}
-
-.rating-value {
-  color: var(--muted-color);
-  font-size: 0.8rem;
 }
 
 .tutor-description {
@@ -675,7 +643,7 @@
   border-top: 1px solid var(--border-color);
 }
 
-.card-reviews {
+.card-profile-link {
   margin-top: 3px;
   color: var(--button-color);
   font-size: 0.68rem;
@@ -761,8 +729,7 @@
   font-weight: 600;
 }
 
-.student-avatar,
-.review-avatar {
+.student-avatar {
   display: grid;
   width: 36px;
   height: 36px;
@@ -774,6 +741,85 @@
   color: var(--button-color);
   font-size: 0.72rem;
   font-weight: 750;
+}
+
+.profile-avatar-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.photo-preview-trigger {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 0;
+  cursor: zoom-in;
+}
+
+.photo-preview-trigger:focus-visible {
+  outline: 3px solid var(--button-color);
+  outline-offset: 3px;
+}
+
+.profile-avatar-trigger {
+  display: grid;
+}
+
+.photo-preview-trigger--fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.photo-preview-trigger--profile {
+  display: block;
+  width: 100%;
+}
+
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.password-field input {
+  padding-right: 44px !important;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  transform: translateY(-50%);
+  place-items: center;
+  padding: 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-color);
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  background: var(--surface-background);
+  color: var(--text-color);
+}
+
+.password-toggle svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 .detail-back-row {
@@ -891,8 +937,7 @@
   gap: 20px;
 }
 
-.calendar-panel,
-.reviews-panel {
+.calendar-panel {
   min-width: 0;
   padding: 22px;
   border: 1px solid var(--border-color);
@@ -900,8 +945,7 @@
   background: var(--surface-background);
 }
 
-.calendar-title-row,
-.reviews-heading {
+.calendar-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -909,8 +953,7 @@
   margin-bottom: 18px;
 }
 
-.calendar-title-row h2,
-.reviews-heading h2 {
+.calendar-title-row h2 {
   margin: 0;
   color: var(--text-color);
   font-size: 1.45rem;
@@ -1029,9 +1072,10 @@
   font-size: 0.7rem;
 }
 
-.calendar-legend span {
+.calendar-legend > span:not(.calendar-legend-item) {
   width: 9px;
   height: 9px;
+  flex: 0 0 9px;
   border: 1px solid var(--level-primary-border);
   border-radius: 50%;
   background: var(--level-primary-background);
@@ -1156,79 +1200,7 @@
   text-align: left;
 }
 
-.reviews-heading {
-  margin-bottom: 15px;
-}
-
-.reviews-summary {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  margin-bottom: 15px;
-  padding: 14px;
-  border-radius: 10px;
-  background: var(--page-background);
-}
-
-.review-score {
-  color: var(--text-color);
-  font-size: 2rem;
-  font-weight: 750;
-  line-height: 1;
-}
-
-.reviews-summary > div {
-  display: grid;
-  gap: 4px;
-}
-
-.reviews-summary > div > span:last-child {
-  color: var(--muted-color);
-  font-size: 0.73rem;
-}
-
-.review-list {
-  display: grid;
-  gap: 11px;
-}
-
-.review-card {
-  padding: 15px;
-  border: 1px solid var(--border-color);
-  border-radius: 11px;
-  background: var(--page-background);
-}
-
-.review-author {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.review-author > div {
-  display: grid;
-  flex: 1;
-  gap: 2px;
-}
-
-.review-author strong {
-  color: var(--text-color);
-  font-size: 0.8rem;
-}
-
-.review-author time {
-  color: var(--muted-color);
-  font-size: 0.7rem;
-}
-
-.review-card > p {
-  margin: 12px 0 0 46px;
-  color: var(--muted-color);
-  font-size: 0.83rem;
-  line-height: 1.55;
-}
-
-.no-reviews {
+.empty-note {
   color: var(--muted-color);
   font-size: 0.84rem;
 }
@@ -1337,6 +1309,41 @@
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.header-menu-toggle {
+  display: none;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--surface-background);
+  cursor: pointer;
+}
+
+.header-menu-toggle span {
+  width: 19px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--button-color);
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.header-menu-toggle[aria-expanded="true"] span:first-child {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.header-menu-toggle[aria-expanded="true"] span:nth-child(2) {
+  opacity: 0;
+}
+
+.header-menu-toggle[aria-expanded="true"] span:last-child {
+  transform: translateY(-7px) rotate(-45deg);
 }
 
 .header-user {
@@ -1560,6 +1567,381 @@
   background: var(--page-background);
 }
 
+.chat-open-link {
+  display: inline-block;
+  margin-left: 0;
+}
+
+.booking-chat-link {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--button-color);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.chat-layout {
+  display: grid;
+  min-height: min(68vh, 720px);
+  grid-template-columns: minmax(230px, 0.75fr) minmax(0, 1.65fr);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 15px;
+  background: var(--surface-background);
+}
+
+.chat-list-panel,
+.chat-thread-panel {
+  min-width: 0;
+  padding: 18px;
+}
+
+.chat-list-panel {
+  border-right: 1px solid var(--border-color);
+}
+
+.chat-list-panel h2,
+.chat-thread-header h2 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 1.05rem;
+}
+
+.chat-list-panel h2 {
+  margin-bottom: 12px;
+}
+
+.chat-list-item {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-color);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-list-item:hover,
+.chat-list-item.is-active {
+  background: var(--page-background);
+}
+
+.chat-list-avatar {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--surface-background);
+  color: var(--button-color);
+  font-size: 0.76rem;
+  font-weight: 750;
+  object-fit: cover;
+}
+
+.chat-list-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.chat-list-copy strong,
+.chat-list-copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-list-copy strong {
+  font-size: 0.85rem;
+}
+
+.chat-list-copy > span {
+  color: var(--muted-color);
+  font-size: 0.76rem;
+}
+
+.chat-thread-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.chat-thread-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.chat-message-list {
+  display: flex;
+  min-height: 240px;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 16px 4px;
+}
+
+.chat-message {
+  max-width: min(82%, 620px);
+  align-self: flex-start;
+  padding: 10px 13px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 13px 13px 13px 3px;
+  background: var(--page-background);
+  overflow-wrap: anywhere;
+}
+
+.chat-message.is-own {
+  align-self: flex-end;
+  border-color: color-mix(in srgb, var(--button-color) 45%, var(--border-color));
+  border-radius: 13px 13px 3px 13px;
+  background: color-mix(in srgb, var(--button-color) 9%, var(--surface-background));
+}
+
+.chat-message.is-booking-notice {
+  max-width: 100%;
+  align-self: stretch;
+  border-color: #d7a640;
+  border-radius: 10px;
+  background: color-mix(in srgb, #f3c65e 20%, var(--surface-background));
+}
+
+.chat-message.is-booking-notice strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-color);
+  font-size: 0.82rem;
+}
+
+.chat-message p {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.chat-message time {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted-color);
+  font-size: 0.68rem;
+  text-align: right;
+}
+
+.chat-compose {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.chat-compose textarea {
+  min-width: 0;
+  min-height: 44px;
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  background: var(--page-background);
+  color: var(--text-color);
+  font: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+.chat-compose textarea:focus-visible {
+  border-color: var(--button-color);
+  outline: 2px solid color-mix(in srgb, var(--button-color) 30%, transparent);
+}
+
+.chat-compose .book-button {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.chat-empty {
+  margin: 8px 0;
+  color: var(--muted-color);
+  font-size: 0.84rem;
+}
+
+.chat-thread-placeholder {
+  margin: auto;
+  text-align: center;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.profile-photo-editor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.profile-photo-preview {
+  width: 68px;
+  height: 68px;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.photo-preview-backdrop {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 78%);
+}
+
+.photo-preview-dialog {
+  position: relative;
+  display: grid;
+  max-width: min(96vw, 1100px);
+  max-height: 94dvh;
+  place-items: center;
+  outline: none;
+}
+
+.photo-preview-large {
+  display: block;
+  max-width: 100%;
+  max-height: 94dvh;
+  border-radius: 8px;
+  object-fit: contain;
+  box-shadow: 0 12px 48px rgb(0 0 0 / 38%);
+}
+
+.photo-preview-close {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 55%);
+  border-radius: 50%;
+  background: rgb(0 0 0 / 62%);
+  color: white;
+  font: inherit;
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.photo-preview-close:hover {
+  background: rgb(0 0 0 / 85%);
+}
+
+.photo-upload-label {
+  position: relative;
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  padding: 7px 12px;
+  border: 1px solid var(--button-color);
+  border-radius: 8px;
+  color: var(--button-color);
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.photo-upload-label input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.profile-photo-editor .form-hint,
+.profile-photo-editor .form-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.tutor-lesson-list {
+  display: grid;
+  gap: 10px;
+}
+
+.tutor-lesson-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 11px;
+  background: var(--page-background);
+}
+
+.tutor-lesson-avatar {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--surface-background);
+  color: var(--button-color);
+  font-size: 0.85rem;
+  font-weight: 750;
+  object-fit: cover;
+}
+
+.tutor-lesson-details {
+  min-width: 0;
+}
+
+.tutor-lesson-details .eyebrow {
+  margin: 0;
+}
+
+.tutor-lesson-details h3 {
+  margin: 3px 0;
+  color: var(--text-color);
+  font-size: 0.98rem;
+}
+
+.tutor-lesson-details p:not(.eyebrow) {
+  margin: 2px 0;
+  color: var(--muted-color);
+  font-size: 0.84rem;
+}
+
 .notification-card > p:not(.eyebrow) {
   margin: 7px 0;
   color: var(--muted-color);
@@ -1615,10 +1997,6 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.review-editor .auth-form {
-  max-width: 700px;
 }
 
 .tutor-dashboard-grid {
@@ -1685,10 +2063,14 @@
   margin: 0 0 16px;
 }
 
-.profile-editor-heading .profile-photo {
+.profile-editor-heading .profile-photo,
+.profile-editor-heading .photo-preview-trigger--profile {
   width: 96px;
   height: 96px;
   flex: 0 0 auto;
+  margin: 0;
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 .profile-editor-heading h2 {
@@ -1774,6 +2156,12 @@
   background: var(--level-tertiary-background);
 }
 
+.calendar-section .calendar-day.is-unavailable {
+  border-color: var(--border-color);
+  background: var(--surface-background);
+  color: var(--muted-color);
+}
+
 .calendar-section .calendar-day.is-special-hours {
   border-color: var(--level-secondary-border);
   background: var(--level-secondary-background);
@@ -1787,8 +2175,10 @@
 
 .calendar-legend-item {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 5px;
+  white-space: nowrap;
 }
 
 .calendar-legend-dot {
@@ -1813,6 +2203,11 @@
   background: var(--level-secondary-background);
 }
 
+.calendar-legend-dot--unavailable {
+  border-color: var(--border-color);
+  background: var(--surface-background);
+}
+
 .day-off-editor {
   display: grid;
   gap: 10px;
@@ -1832,26 +2227,8 @@
   margin: 0;
 }
 
-.day-off-time-range {
-  display: flex;
-  gap: 12px;
-}
-
-.day-off-time-range label {
-  display: grid;
-  gap: 4px;
-  color: var(--muted-color);
-  font-size: 0.78rem;
-}
-
-.day-off-time-range input {
-  min-height: 36px;
-  padding: 5px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 7px;
-  background: var(--surface-background);
-  color: var(--text-color);
-  font: inherit;
+.day-off-slider-row {
+  margin-left: 0;
 }
 
 .calendar-month-nav h2 {
@@ -1876,6 +2253,46 @@ a:focus-visible {
 }
 
 @media (max-width: 900px) {
+  .page-header {
+    z-index: 5;
+  }
+
+  .header-menu-toggle {
+    display: flex;
+  }
+
+  .header-actions {
+    display: none;
+  }
+
+  .header-actions.is-open {
+    position: absolute;
+    top: calc(100% - 1px);
+    right: 0;
+    display: flex;
+    width: min(320px, calc(100vw - 40px));
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--surface-background);
+    box-shadow: 0 14px 32px rgb(33 39 53 / 16%);
+  }
+
+  .header-actions.is-open .header-user {
+    justify-content: flex-start;
+    padding: 5px 8px 10px;
+  }
+
+  .header-actions.is-open .header-link,
+  .header-actions.is-open .header-button {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1957,11 +2374,6 @@ a:focus-visible {
     padding-block: 10px;
   }
 
-  .header-actions {
-    width: 100%;
-    gap: 6px;
-  }
-
   .header-user {
     width: auto;
     justify-content: flex-end;
@@ -2035,9 +2447,32 @@ a:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .calendar-panel,
-  .reviews-panel {
+  .calendar-panel {
     padding: 16px;
+  }
+
+  .chat-layout {
+    min-height: 65vh;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-list-panel {
+    max-height: 220px;
+    overflow-y: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .chat-thread-panel {
+    min-height: 360px;
+  }
+
+  .chat-message {
+    max-width: 92%;
+  }
+
+  .chat-compose .book-button {
+    padding-inline: 12px;
   }
 }
 
@@ -2082,13 +2517,11 @@ a:focus-visible {
     gap: 12px;
   }
 
-  .calendar-panel,
-  .reviews-panel {
+  .calendar-panel {
     padding: 14px;
   }
 
-  .calendar-title-row,
-  .reviews-heading {
+  .calendar-title-row {
     align-items: flex-start;
   }
 

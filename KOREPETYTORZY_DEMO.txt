@@ -1,0 +1,105 @@
+FIKCYJNI KOREPETYTORZY — DANE PRZYKŁADOWE
+
+Wszystkie osoby i opisy poniżej są wymyślone. Adresy używają domeny example.com
+i służą wyłącznie jako przykłady, nie jako prawdziwe dane kontaktowe.
+Cena dotyczy jednej lekcji trwającej 40 minut.
+
+
+1. Aleksandra Nowicka
+E-mail: aleksandra.nowicka@example.com
+Opis: Pomagam uporządkować matematykę krok po kroku. Przygotowuję do sprawdzianów
+i egzaminów, tłumaczę trudniejsze zagadnienia na prostych przykładach oraz
+dopasowuję tempo pracy do potrzeb ucznia.
+Cena: 120 zł za lekcję
+Przedmioty: Matematyka
+Poziomy nauczania: Szkoła Podstawowa, Szkoła Średnia
+
+
+2. Michał Zieliński
+E-mail: michal.zielinski@example.com
+Opis: Uczę języka angielskiego w praktyce: ćwiczymy rozmowę, słownictwo
+i gramatykę na przykładach z życia codziennego. Pomagam też w przygotowaniu
+do egzaminów i przełamaniu bariery mówienia.
+Cena: 110 zł za lekcję
+Przedmioty: Angielski
+Poziomy nauczania: Szkoła Podstawowa, Szkoła Średnia, Studia
+
+
+3. Julia Kamińska
+E-mail: julia.kaminska@example.com
+Opis: Wyjaśniam chemię spokojnie i bez zbędnego stresu. Łączę teorię
+z zadaniami, pokazuję, jak rozwiązywać obliczenia, i pomagam przygotować się
+do klasówek oraz egzaminu maturalnego.
+Cena: 130 zł za lekcję
+Przedmioty: Chemia
+Poziomy nauczania: Szkoła Średnia
+
+
+4. Piotr Lewandowski
+E-mail: piotr.lewandowski@example.com
+    Opis: Pomagam zrozumieć fizykę przez doświadczenia myślowe, rysunki i zadania.
+    Wspólnie rozkładamy problem na etapy, aby wzory miały sens i można je było
+    samodzielnie zastosować.
+Cena: 140 zł za lekcję
+Przedmioty: Fizyka, Matematyka
+Poziomy nauczania: Szkoła Średnia, Studia
+
+
+5. Zofia Wójcik
+E-mail: zofia.wojcik@example.com
+Opis: Pomagam rozwijać umiejętność pisania i czytania ze zrozumieniem.
+Pracujemy nad lekturami, gramatyką, ortografią oraz tworzeniem wypowiedzi
+pisemnych. Zajęcia dopasowuję do aktualnych celów ucznia.
+Cena: 100 zł za lekcję
+Przedmioty: Polski
+Poziomy nauczania: Szkoła Podstawowa, Szkoła Średnia
+
+
+6. Antoni Dąbrowski
+E-mail: antoni.dabrowski@example.com
+Opis: Prowadzę zajęcia z programowania i informatyki dla osób zaczynających
+naukę oraz tych, które chcą rozwinąć swoje umiejętności. Tłumaczę podstawy
+algorytmicznego myślenia i pomagam rozwiązywać zadania.
+Cena: 150 zł za lekcję
+Przedmioty: Informatyka, Programowanie, Algorytmika
+Poziomy nauczania: Szkoła Średnia, Studia
+
+
+7. Lena Szymańska
+E-mail: lena.szymanska@example.com
+Opis: Pomagam w nauce biologii, łącząc najważniejsze pojęcia z przykładami
+i schematami. Ułatwiam zapamiętywanie procesów oraz przygotowuję do sprawdzianów
+i egzaminów.
+Cena: 125 zł za lekcję
+Przedmioty: Biologia, Chemia
+Poziomy nauczania: Szkoła Podstawowa, Szkoła Średnia
+
+
+8. Kacper Woźniak
+E-mail: kacper.wozniak@example.com
+Opis: Uczę historii i geografii w uporządkowany sposób. Korzystamy z osi czasu,
+map i skojarzeń, żeby lepiej zrozumieć wydarzenia, zależności oraz procesy
+zachodzące w różnych częściach świata.
+Cena: 105 zł za lekcję
+Przedmioty: Historia, Geografia
+Poziomy nauczania: Szkoła Podstawowa, Szkoła Średnia
+
+
+9. Natalia Kamińska
+E-mail: natalia.kaminska@example.com
+Opis: Prowadzę lekcje języka niemieckiego od podstaw i na poziomie szkolnym.
+Ćwiczymy słownictwo, gramatykę, wymowę i krótkie rozmowy. Pomagam również
+w bieżących zadaniach i przygotowaniu do testów.
+Cena: 115 zł za lekcję
+Przedmioty: Język Niemiecki
+Poziomy nauczania: Szkoła Podstawowa, Szkoła Średnia
+
+
+10. Filip Kaczmarek
+E-mail: filip.kaczmarek@example.com
+Opis: Pomagam studentom w statystyce i rachunku różniczkowym. Omawiam teorię
+na konkretnych przykładach, a potem wspólnie rozwiązujemy zadania, zwracając
+uwagę na kolejne kroki i interpretację wyników.
+Cena: 170 zł za lekcję
+Przedmioty: Statystyka, Rachunek Różniczkowy, Matematyka
+Poziomy nauczania: Studia

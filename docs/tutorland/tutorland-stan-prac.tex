@@ -38,7 +38,7 @@
 {\large Przegląd aplikacji, lokalnego API, przygotowania PHP/MySQL i nowej domeny wdrożeniowej.}
 \vfill
 \colorbox{pale}{\parbox{\dimexpr\textwidth-2\fboxsep\relax}{\textbf{W skrócie}\\
-Działa katalog publiczny, logowanie e-mail/hasło i rejestracja z wyborem roli, profile, rezerwacje, panele ucznia i korepetytora oraz opinie. Lokalny tryb developerski korzysta z Node.js i CSV; dla hostingu PHP przygotowano API PHP i schemat MySQL. Użytkownik potwierdził dostępność HTTPS dla domeny `tutorland.infinityfree.io`; logowanie powinno być testowane pod adresem HTTPS.}}\par
+Działa katalog publiczny, logowanie e-mail/hasło i rejestracja z wyborem roli, profile, rezerwacje oraz panele ucznia i korepetytora. System oceniania korepetytorów został usunięty. Lokalny tryb developerski korzysta z Node.js i CSV; dla hostingu PHP przygotowano API PHP i schemat MySQL. Użytkownik potwierdził dostępność HTTPS dla domeny `tutorland.infinityfree.io`; logowanie powinno być testowane pod adresem HTTPS.}}\par
 \vspace{12mm}
 {\small\color{muted}Raport opisuje kod projektu. Nie oznacza wdrożenia publicznego serwera ani aktywnego połączenia z zewnętrznym kontem Zoom.}
 \end{titlepage}
@@ -47,13 +47,13 @@ Działa katalog publiczny, logowanie e-mail/hasło i rejestracja z wyborem roli,
 \begin{itemize}
 \item \textbf{Katalog publiczny:} karty i profile korepetytorów, wyszukiwanie po imieniu i nazwisku, filtr przedmiotu i poziomu nauczania oraz podgląd dostępnych terminów przez gości.
 \item \textbf{Konta i role:} rejestracja i logowanie adresem e-mail oraz hasłem, wybór ucznia lub korepetytora, sesja w ciasteczku \texttt{HttpOnly}, hasła przechowywane jako hashe PBKDF2-SHA-256 oraz wylogowanie. Logowanie Google nie jest skonfigurowane. Rola jest sprawdzana po stronie API.
-\item \textbf{Tryb developerski:} lokalne API Node obsługuje konta, katalog, profile, dostępność, rezerwacje i opinie; zapisuje dane w prywatnych plikach CSV w \texttt{server/data/}.
-\item \textbf{Tryb wdrożeniowy:} dodano API PHP w \texttt{public/api/index.php} z tymi samymi ścieżkami \texttt{/api/...}, obsługą kont, sesji, ról, profili, dostępności, rezerwacji i opinii.
-\item \textbf{MySQL:} utworzono \texttt{tutorland-database.sql} poza katalogiem aplikacji. Schemat obejmuje konta z hashami haseł, profile, przedmioty, poziomy, dostępność, dni wolne, rezerwacje, opinie i sesje. Tabele Zoom w schemacie są pozostałością i nie są używane przez aktualne API.
+\item \textbf{Tryb developerski:} lokalne API Node obsługuje konta, katalog, profile, dostępność i rezerwacje; zapisuje dane w prywatnych plikach CSV w \texttt{server/data/}.
+\item \textbf{Tryb wdrożeniowy:} dodano API PHP w \texttt{public/api/index.php} z tymi samymi ścieżkami \texttt{/api/...}, obsługą kont, sesji, ról, profili, dostępności i rezerwacji.
+\item \textbf{MySQL:} utworzono \texttt{tutorland-database.sql} poza katalogiem aplikacji. Schemat obejmuje konta z hashami haseł, profile, przedmioty, poziomy, dostępność, dni wolne, rezerwacje i sesje. Tabele Zoom w schemacie są pozostałością i nie są używane przez aktualne API.
 \item \textbf{Rezerwacje:} uczeń może zapisać się na dostępny termin lekcji 40-minutowej. API weryfikuje rolę, przedmiot, dostępność, dni wolne, przeszłe godziny i nakładające się rezerwacje.
-\item \textbf{Panel ucznia:} lista zaplanowanych i zakończonych lekcji, historia własnych opinii oraz formularze dodawania, edycji i usuwania. Linki do spotkań nie są obecnie tworzone.
+\item \textbf{Panel ucznia:} lista zaplanowanych i zakończonych lekcji oraz linki do rozmów. Linki do spotkań nie są obecnie tworzone.
 \item \textbf{Panel korepetytora:} edycja profilu, przedmiotów, poziomów i ceny; suwaki do ustawiania godzin dostępności w tygodniu; kalendarz liczby rezerwacji w bieżącym miesiącu i oznaczanie dni wolnych w kolejnym miesiącu.
-\item \textbf{Powiadomienia korepetytora:} zaplanowane i zakończone lekcje oraz opinie uczniów. Korepetytor może je przeglądać, ale nie edytować.
+\item \textbf{Powiadomienia korepetytora:} zaplanowane i zakończone lekcje. Korepetytor może przeglądać szczegóły i przejść do rozmowy z uczniem.
 \item \textbf{Integracja Zoom:} wyłączona. Endpointy \texttt{/api/zoom/...} zwracają HTTP 410; nowe rezerwacje nie tworzą spotkań ani linków.
 \item \textbf{Dane konta demonstracyjnego:} usunięto wskazane konto testowe z aplikacji i źródłowych danych demonstracyjnych. Uczniowie nie mają zdjęć profilowych. Nazwę poziomu zmieniono na „Szkoła Podstawowa”.
 \end{itemize}
@@ -78,10 +78,10 @@ Ograniczenie hostingu & Logowanie i rezerwacje nie wymagają połączeń do zewn
 
 \section{Sprawdzenia}
 \begin{itemize}
-\item Testy Node sprawdzają kodowanie CSV oraz podstawowe przepływy API: konta, sesje, dostęp do profilu, zapis rezerwacji, odrzucanie duplikatów i opinii przed odbytą lekcją.
+\item Testy Node sprawdzają kodowanie CSV oraz podstawowe przepływy API: konta, sesje, dostęp do profilu i zapis rezerwacji.
 \item \texttt{npm run lint} przechodzi bez ostrzeżeń.
 \item \texttt{npm run build} generuje frontend produkcyjny.
-\item PHP API przechodzi kontrolę składni PHP 8.3. Schemat SQL został zaimportowany do tymczasowej bazy MariaDB; test integracyjny sprawdził rejestrację, logowanie, profile, dostępność, kolizję rezerwacji i cykl opinii.
+\item PHP API przechodzi kontrolę składni PHP 8.3. Schemat SQL został zaimportowany do tymczasowej bazy MariaDB; test integracyjny sprawdził rejestrację, logowanie, profile, dostępność i kolizję rezerwacji.
 \item Nie wykonano jeszcze wdrożenia na InfinityFree ani rzeczywistego połączenia OAuth/Zoom.
 \end{itemize}
 

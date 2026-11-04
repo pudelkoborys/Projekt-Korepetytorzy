@@ -1,5 +1,6 @@
 export async function api(path, options = {}) {
-  const response = await fetch(path.startsWith('/api/') ? path : `/api${path}`, {
+  const endpoint = path.startsWith('/api/') ? path : `/api${path}`
+  const response = await fetch(endpoint, {
     credentials: 'same-origin',
     ...options,
     headers: {
@@ -9,7 +10,18 @@ export async function api(path, options = {}) {
     body: options.body ? JSON.stringify(options.body) : options.body,
   })
 
-  const payload = response.status === 204 ? {} : await response.json()
+  let payload = {}
+  if (response.status !== 204) {
+    const body = await response.text()
+    if (body) {
+      try {
+        payload = JSON.parse(body)
+      } catch {
+        const message = `Serwer zwrócił nieprawidłową odpowiedź dla ${endpoint} (HTTP ${response.status}).`
+        throw new Error(response.ok ? message : `Serwer hostingu zwrócił stronę HTML zamiast JSON dla ${endpoint} (HTTP ${response.status}).`)
+      }
+    }
+  }
   if (!response.ok) throw new Error(payload.error || `Żądanie nie powiodło się (${response.status}).`)
   return payload
 }

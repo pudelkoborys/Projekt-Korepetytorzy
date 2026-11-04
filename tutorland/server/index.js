@@ -8,7 +8,6 @@ import {
 } from 'node:crypto'
 import { createServer } from 'node:http'
 import { initializeStorage, readCsv, updateCsv } from './storage.js'
-import { removeZoomConnection } from './zoom.js'
 import { DEFAULT_SUBJECTS, formatSubjectName, subjectKey } from '../src/subjects.js'
 
 const port = Number(process.env.API_PORT ?? 3001)
@@ -17,6 +16,7 @@ const sessionDuration = 14 * 24 * 60 * 60 * 1000
 const passwordIterations = 310_000
 const dummyPasswordHash = 'pbkdf2-sha256$310000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 const lessonDuration = 40
+const bookingNoticeLead = 'Nowa rezerwacja lekcji'
 const levels = new Set(['primary', 'secondary', 'tertiary'])
 class HttpError extends Error {
   constructor(status, message) {
@@ -56,9 +56,22 @@ function isValidEmail(email) {
     && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+function validateProfileImage(value) {
+  if (value === '') return ''
+  if (typeof value !== 'string' || value.length > 700_000
+    || !/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+    throw new HttpError(400, 'Wybierz prawidłowe zdjęcie profilowe.')
+  }
+  const image = Buffer.from(value.slice(value.indexOf(',') + 1), 'base64')
+  if (!image.length || image.length > 500_000) {
+    throw new HttpError(400, 'Zdjęcie profilowe jest zbyt duże.')
+  }
+  return value
+}
+
 function plDateTime(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: process.env.ZOOM_TIMEZONE ?? 'Europe/Warsaw',
+    timeZone: process.env.APP_TIMEZONE ?? 'Europe/Warsaw',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -152,6 +165,7 @@ function publicUser(user) {
     firstName: user.firstName,
     lastName: user.lastName,
     tutorId: user.tutorId || '',
+    profileImage: user.profileImage || '',
   }
 }
 
@@ -201,33 +215,80 @@ async function ownedTutor(user) {
   return tutor
 }
 
-function tutorPublic(tutor, reviews) {
-  const tutorReviews = reviews.filter((review) => review.tutorId === tutor.tutorId)
-  const rating = tutorReviews.length
-    ? tutorReviews.reduce((sum, review) => sum + Number(review.rating), 0) / tutorReviews.length
-    : Number(tutor.rating || 0)
-  const { email: _email, ...publicProfile } = tutor
+async function ensureChat(studentId, tutorId) {
+  let chat
+  await updateCsv('chats', async (chats) => {
+    chat = chats.find((item) => item.studentId === studentId && item.tutorId === tutorId)
+    if (chat) return { records: chats, result: null }
+    chat = { id: randomUUID(), studentId, tutorId, createdAt: new Date().toISOString() }
+    return { records: [...chats, chat], result: null }
+  })
+  return chat
+}
+
+function isChatParticipant(chat, user) {
+  return user.role === 'student'
+    ? chat.studentId === user.id
+    : user.role === 'tutor' && chat.tutorId === user.tutorId
+}
+
+async function authorizedChat(chatId, user) {
+  const chat = (await readCsv('chats')).find((item) => item.id === chatId)
+  if (!chat || !isChatParticipant(chat, user)) {
+    throw new HttpError(404, 'Nie znaleziono rozmowy.')
+  }
+  return chat
+}
+
+function publicChatMessage(message, users) {
+  const sender = users.find((item) => item.id === message.senderId)
+  return {
+    id: message.id,
+    chatId: message.chatId,
+    senderId: message.senderId,
+    senderName: message.messageType === 'booking_notice'
+      ? 'Informacja o rezerwacji'
+      : sender ? `${sender.firstName} ${sender.lastName}` : 'Użytkownik',
+    senderImage: sender?.profileImage || '',
+    messageType: message.messageType || 'user',
+    content: message.content,
+    createdAt: message.createdAt,
+  }
+}
+
+function addOneUtcMonth(value) {
+  const date = new Date(value)
+  const day = date.getUTCDate()
+  date.setUTCDate(1)
+  date.setUTCMonth(date.getUTCMonth() + 1)
+  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate()
+  date.setUTCDate(Math.min(day, lastDay))
+  return date.valueOf()
+}
+
+function isChatMessageRetained(message, now = Date.now()) {
+  const createdAt = Date.parse(message.createdAt)
+  return Number.isFinite(createdAt) && addOneUtcMonth(createdAt) > now
+}
+
+async function retainedChatMessages() {
+  const messages = await readCsv('chatMessages')
+  if (!messages.some((message) => !isChatMessageRetained(message))) return messages
+  return updateCsv('chatMessages', async (current) => {
+    const retained = current.filter((message) => isChatMessageRetained(message))
+    return { records: retained, result: retained }
+  })
+}
+
+function tutorPublic(tutor) {
+  const { email: _email, rating: _rating, ...publicProfile } = tutor
   return {
     ...publicProfile,
-    rating: Math.round(rating * 10) / 10,
-    reviewCount: tutorReviews.length,
     subjects: String(tutor.subjects ?? '').split('|').filter(Boolean),
     levels: String(tutor.levels ?? '').split('|').filter(Boolean),
     pricePerLesson: Number(tutor.pricePerLesson),
     teachingSinceYear: Number(tutor.teachingSinceYear),
     age: Number(tutor.age || 0),
-  }
-}
-
-function cleanReview(review, name = 'Uczeń') {
-  return {
-    id: review.id,
-    tutorId: review.tutorId,
-    bookingId: review.bookingId,
-    rating: Number(review.rating),
-    date: review.date,
-    comment: review.comment,
-    studentName: name,
   }
 }
 
@@ -406,6 +467,9 @@ async function serve(request, response) {
       || typeof password !== 'string' || password.length < 8 || password.length > 256) {
       throw new HttpError(400, 'Sprawdź imię, nazwisko, adres e-mail, rolę i hasło (co najmniej 8 znaków).')
     }
+    if (password !== body.passwordConfirmation) {
+      throw new HttpError(400, 'Wpisane hasła nie są takie same.')
+    }
 
     const tutorId = role === 'tutor'
       ? `${firstName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${randomBytes(5).toString('hex')}`
@@ -419,6 +483,7 @@ async function serve(request, response) {
       passwordHash: makePasswordHash(password),
       tutorId,
       createdAt: new Date().toISOString(),
+      profileImage: '',
     }
     await updateCsv('users', async (users) => {
       if (users.some((item) => item.email.toLowerCase() === email)) {
@@ -435,7 +500,6 @@ async function serve(request, response) {
           age: '',
           teachingSinceYear: new Date().getFullYear(),
           description: 'Dodaj opis swojej oferty i doświadczenia.',
-          rating: 0,
           pricePerLesson: 100,
           levels: 'primary',
           subjects: 'Matematyka',
@@ -489,10 +553,25 @@ async function serve(request, response) {
     return send(response, 200, { success: true })
   }
 
+  if (method === 'PUT' && pathname === '/api/profile/photo') {
+    const user = await requireUser(request)
+    const profileImage = validateProfileImage((await readBody(request)).profileImage)
+    await updateCsv('users', async (users) => ({
+      records: users.map((item) => item.id === user.id ? { ...item, profileImage } : item),
+      result: null,
+    }))
+    if (user.role === 'tutor') {
+      await updateCsv('tutors', async (tutors) => ({
+        records: tutors.map((item) => item.tutorId === user.tutorId ? { ...item, imagePath: profileImage } : item),
+        result: null,
+      }))
+    }
+    return send(response, 200, { success: true })
+  }
+
   if (method === 'POST' && pathname === '/api/auth/delete-account') {
     const user = await requireUser(request)
     if (user.role === 'tutor') {
-      await removeZoomConnection(user.id)
       await updateCsv('tutors', async (tutors) => ({
         records: tutors.filter((tutor) => tutor.tutorId !== user.tutorId),
         result: null,
@@ -509,22 +588,23 @@ async function serve(request, response) {
         records: bookings.filter((booking) => booking.tutorId !== user.tutorId && booking.studentId !== user.id),
         result: null,
       }))
-      await updateCsv('reviews', async (reviews) => ({
-        records: reviews.filter((review) => review.tutorId !== user.tutorId && review.studentId !== user.id),
-        result: null,
-      }))
     } else {
       await updateCsv('bookings', async (bookings) => ({
         records: bookings.filter((booking) => booking.studentId !== user.id),
         result: null,
       }))
-      await updateCsv('reviews', async (reviews) => ({
-        records: reviews.filter((review) => review.studentId !== user.id),
-        result: null,
-      }))
     }
-    await updateCsv('oauthStates', async (states) => ({
-      records: states.filter((state) => state.userId !== user.id),
+    const removedChatIds = await updateCsv('chats', async (chats) => {
+      const removed = chats.filter((chat) => (
+        user.role === 'tutor' ? chat.tutorId === user.tutorId : chat.studentId === user.id
+      ))
+      return {
+        records: chats.filter((chat) => !removed.includes(chat)),
+        result: removed.map((chat) => chat.id),
+      }
+    })
+    await updateCsv('chatMessages', async (messages) => ({
+      records: messages.filter((message) => !removedChatIds.includes(message.chatId)),
       result: null,
     }))
     await updateCsv('sessions', async (sessions) => ({
@@ -552,8 +632,8 @@ async function serve(request, response) {
   }
 
   if (method === 'GET' && pathname === '/api/tutors') {
-    const [tutors, reviews] = await Promise.all([readCsv('tutors'), readCsv('reviews')])
-    return send(response, 200, { tutors: tutors.map((tutor) => tutorPublic(tutor, reviews)) })
+    const tutors = await readCsv('tutors')
+    return send(response, 200, { tutors: tutors.map(tutorPublic) })
   }
 
   const tutorAvailabilityMatch = pathname.match(/^\/api\/tutors\/([^/]+)\/availability$/)
@@ -581,20 +661,86 @@ async function serve(request, response) {
   const tutorMatch = pathname.match(/^\/api\/tutors\/([^/]+)$/)
   if (method === 'GET' && tutorMatch) {
     const tutorId = decodeURIComponent(tutorMatch[1])
-    const [tutors, reviews, users] = await Promise.all([
-      readCsv('tutors'),
-      readCsv('reviews'),
-      readCsv('users'),
-    ])
+    const tutors = await readCsv('tutors')
     const tutor = tutors.find((item) => item.tutorId === tutorId)
     if (!tutor) throw new HttpError(404, 'Nie znaleziono korepetytora.')
-    const userNames = new Map(users.map((item) => [item.id, `${item.firstName} ${item.lastName}`]))
-    const publicReviews = reviews.filter((review) => review.tutorId === tutorId)
-      .map((review) => cleanReview(
-        review,
-        userNames.get(review.studentId) ?? 'Uczeń',
-      ))
-    return send(response, 200, { tutor: tutorPublic(tutor, reviews), reviews: publicReviews })
+    return send(response, 200, { tutor: tutorPublic(tutor) })
+  }
+
+  if (method === 'GET' && (
+    pathname === '/api/chats'
+    || (pathname === '/api/messages' && !url.searchParams.has('chatId'))
+  )) {
+    const user = await requireUser(request)
+    const [chats, users, tutors, messages] = await Promise.all([
+      readCsv('chats'),
+      readCsv('users'),
+      readCsv('tutors'),
+      retainedChatMessages(),
+    ])
+    const visibleChats = chats.filter((chat) => isChatParticipant(chat, user))
+    const conversations = visibleChats.map((chat) => {
+      const student = users.find((item) => item.id === chat.studentId)
+      const tutor = tutors.find((item) => item.tutorId === chat.tutorId)
+      const tutorUser = users.find((item) => item.tutorId === chat.tutorId)
+      const latestMessage = messages
+        .filter((message) => message.chatId === chat.id)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+      return {
+        id: chat.id,
+        tutorId: chat.tutorId,
+        studentName: student ? `${student.firstName} ${student.lastName}` : 'Uczeń',
+        studentImage: student?.profileImage || '',
+        tutorName: tutor ? `${tutor.firstName} ${tutor.lastName}` : 'Korepetytor',
+        tutorImage: tutorUser?.profileImage || tutor?.imagePath || '',
+        latestMessage: latestMessage?.content || '',
+        lastActivity: latestMessage?.createdAt || chat.createdAt,
+      }
+    }).sort((a, b) => b.lastActivity.localeCompare(a.lastActivity))
+    return send(response, 200, { chats: conversations })
+  }
+
+  const chatMessagesMatch = pathname.match(/^\/api\/chats\/([^/]+)\/messages$/)
+  if ((chatMessagesMatch || pathname === '/api/messages')
+    && (method === 'POST' || (method === 'GET' && url.searchParams.has('chatId')))) {
+    const user = await requireUser(request)
+    const body = method === 'POST' ? await readBody(request) : null
+    const chatId = chatMessagesMatch
+      ? decodeURIComponent(chatMessagesMatch[1])
+      : method === 'GET'
+        ? url.searchParams.get('chatId')
+        : body.chatId
+    if (typeof chatId !== 'string' || !chatId) {
+      throw new HttpError(400, 'Wybierz prawidłową rozmowę.')
+    }
+    const chat = await authorizedChat(chatId, user)
+    if (method === 'GET') {
+      const [messages, users] = await Promise.all([retainedChatMessages(), readCsv('users')])
+      return send(response, 200, {
+        messages: messages.filter((message) => message.chatId === chat.id)
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+          .map((message) => publicChatMessage(message, users)),
+      })
+    }
+
+    const content = typeof body.content === 'string' ? body.content.trim() : ''
+    if (!content || content.length > 4000) {
+      throw new HttpError(400, 'Wiadomość musi zawierać od 1 do 4000 znaków.')
+    }
+    const message = {
+      id: randomUUID(),
+      chatId: chat.id,
+      senderId: user.id,
+      messageType: 'user',
+      content,
+      createdAt: new Date().toISOString(),
+    }
+    await updateCsv('chatMessages', async (messages) => ({
+      records: [...messages, message],
+      result: null,
+    }))
+    const users = await readCsv('users')
+    return send(response, 201, { message: publicChatMessage(message, users) })
   }
 
   if (method === 'GET' && pathname === '/api/bookings') {
@@ -603,9 +749,10 @@ async function serve(request, response) {
     const visible = user.role === 'student'
       ? bookings.filter((booking) => booking.studentId === user.id)
       : bookings.filter((booking) => booking.tutorId === user.tutorId)
-    const [users, tutors] = await Promise.all([readCsv('users'), readCsv('tutors')])
+    const [users, tutors, chats] = await Promise.all([readCsv('users'), readCsv('tutors'), readCsv('chats')])
     const userById = new Map(users.map((item) => [item.id, item]))
     const tutorByIdMap = new Map(tutors.map((tutor) => [tutor.tutorId, tutor]))
+    const chatByPair = new Map(chats.map((chat) => [`${chat.studentId}\0${chat.tutorId}`, chat.id]))
     return send(response, 200, {
       bookings: visible.map((booking) => {
         const student = userById.get(booking.studentId)
@@ -613,10 +760,11 @@ async function serve(request, response) {
         const safeBooking = { ...booking }
         delete safeBooking.studentEmail
         delete safeBooking.studentId
-        if (user.role !== 'tutor') delete safeBooking.zoomStartUrl
         return {
           ...safeBooking,
+          chatId: chatByPair.get(`${booking.studentId}\0${booking.tutorId}`) || '',
           studentName: student ? `${student.firstName} ${student.lastName}` : 'Uczeń',
+          ...(user.role === 'tutor' ? { studentImage: student?.profileImage || '' } : {}),
           tutorName: tutor ? `${tutor.firstName} ${tutor.lastName}` : 'Korepetytor',
           isPast: isBookingPast(booking),
         }
@@ -653,11 +801,21 @@ async function serve(request, response) {
         durationMinutes: String(lessonDuration),
         subject,
         level,
-        zoomStatus: 'pending',
-        zoomJoinUrl: '',
-        zoomStartUrl: '',
       }
       return { records: [...bookings, booking], result: null }
+    })
+    const chat = await ensureChat(user.id, tutor.tutorId)
+    const notice = {
+      id: randomUUID(),
+      chatId: chat.id,
+      senderId: user.id,
+      messageType: 'booking_notice',
+      content: `${bookingNoticeLead}: ${booking.date}, ${booking.startTime}–${booking.endTime}; ${booking.subject} (${booking.level}). Uczniu, napisz proszę do korepetytora, aby ustalić sposób przeprowadzenia zajęć oraz sposób i termin płatności.`,
+      createdAt: new Date().toISOString(),
+    }
+    await updateCsv('chatMessages', async (messages) => {
+      const retained = messages.filter((message) => isChatMessageRetained(message))
+      return { records: [...retained, notice], result: null }
     })
 
     return send(response, 201, {
@@ -670,9 +828,7 @@ async function serve(request, response) {
         durationMinutes: booking.durationMinutes,
         subject: booking.subject,
         level: booking.level,
-        zoomStatus: booking.zoomStatus,
-        zoomJoinUrl: booking.zoomJoinUrl || '',
-        ...(booking.zoomError ? { zoomError: booking.zoomError } : {}),
+        chatId: chat.id,
       },
     })
   }
@@ -680,8 +836,7 @@ async function serve(request, response) {
   if (method === 'GET' && pathname === '/api/tutor/profile') {
     const user = await requireUser(request)
     const tutor = await ownedTutor(user)
-    const reviews = await readCsv('reviews')
-    return send(response, 200, { tutor: tutorPublic(tutor, reviews) })
+    return send(response, 200, { tutor: tutorPublic(tutor) })
   }
 
   if (method === 'PUT' && pathname === '/api/tutor/profile') {
@@ -759,118 +914,29 @@ async function serve(request, response) {
   if (method === 'GET' && pathname === '/api/tutor/notifications') {
     const user = await requireUser(request)
     const tutor = await ownedTutor(user)
-    const [bookings, reviews, users] = await Promise.all([
+    const [bookings, users, chats] = await Promise.all([
       readCsv('bookings'),
-      readCsv('reviews'),
       readCsv('users'),
+      readCsv('chats'),
     ])
     const userById = new Map(users.map((item) => [item.id, item]))
+    const chatByPair = new Map(chats.map((chat) => [`${chat.studentId}\0${chat.tutorId}`, chat.id]))
     const tutorBookings = bookings.filter((booking) => booking.tutorId === tutor.tutorId)
       .map((booking) => {
         const safeBooking = { ...booking }
         delete safeBooking.studentEmail
         delete safeBooking.studentId
-        delete safeBooking.zoomJoinUrl
         return {
           ...safeBooking,
+          chatId: chatByPair.get(`${booking.studentId}\0${booking.tutorId}`) || '',
           studentName: userById.has(booking.studentId)
             ? `${userById.get(booking.studentId).firstName} ${userById.get(booking.studentId).lastName}`
             : 'Uczeń',
+          studentImage: userById.get(booking.studentId)?.profileImage || '',
           isPast: isBookingPast(booking),
         }
       })
-    const tutorReviews = reviews.filter((review) => review.tutorId === tutor.tutorId)
-      .map((review) => cleanReview(
-        review,
-        userById.has(review.studentId)
-          ? `${userById.get(review.studentId).firstName} ${userById.get(review.studentId).lastName}`
-          : 'Uczeń',
-      ))
-    return send(response, 200, { bookings: tutorBookings, reviews: tutorReviews })
-  }
-
-  if (method === 'GET' && pathname === '/api/reviews/mine') {
-    const user = await requireUser(request)
-    requireRole(user, 'student')
-    const [reviews, tutors] = await Promise.all([readCsv('reviews'), readCsv('tutors')])
-    const tutorNames = new Map(tutors.map((tutor) => [tutor.tutorId, `${tutor.firstName} ${tutor.lastName}`]))
-    return send(response, 200, {
-      reviews: reviews.filter((review) => review.studentId === user.id).map((review) => ({
-        ...cleanReview(review, 'Ty'),
-        tutorName: tutorNames.get(review.tutorId) ?? 'Korepetytor',
-      })),
-    })
-  }
-
-  if (method === 'POST' && pathname === '/api/reviews') {
-    const user = await requireUser(request)
-    requireRole(user, 'student')
-    const body = await readBody(request)
-    const bookingId = String(body.bookingId ?? '')
-    const rating = Number(body.rating)
-    const comment = String(body.comment ?? '').trim()
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5
-      || comment.length < 3 || comment.length > 2000) {
-      throw new HttpError(400, 'Ocena musi wynosić 1–5, a komentarz od 3 do 2000 znaków.')
-    }
-    const booking = (await readCsv('bookings')).find((item) => (
-      item.id === bookingId && item.studentId === user.id
-    ))
-    if (!booking || !isBookingPast(booking)) {
-      throw new HttpError(403, 'Opinię możesz dodać po zakończeniu własnej lekcji.')
-    }
-    const review = {
-      id: randomUUID(),
-      studentId: user.id,
-      studentEmail: user.email,
-      tutorId: booking.tutorId,
-      bookingId,
-      rating: String(rating),
-      date: plDateTime().date,
-      comment,
-      updatedAt: new Date().toISOString(),
-    }
-    await updateCsv('reviews', async (reviews) => {
-      if (reviews.some((item) => item.studentId === user.id && item.tutorId === booking.tutorId)) {
-        throw new HttpError(409, 'Masz już opinię dla tego korepetytora. Możesz ją edytować lub usunąć.')
-      }
-      return { records: [...reviews, review], result: null }
-    })
-    return send(response, 201, { review: cleanReview(review, 'Ty') })
-  }
-
-  const reviewMatch = pathname.match(/^\/api\/reviews\/([^/]+)$/)
-  if ((method === 'PUT' || method === 'DELETE') && reviewMatch) {
-    const user = await requireUser(request)
-    requireRole(user, 'student')
-    const reviewId = decodeURIComponent(reviewMatch[1])
-    const body = method === 'PUT' ? await readBody(request) : {}
-    const rating = Number(body.rating)
-    const comment = String(body.comment ?? '').trim()
-    if (method === 'PUT' && (!Number.isInteger(rating) || rating < 1 || rating > 5
-      || comment.length < 3 || comment.length > 2000)) {
-      throw new HttpError(400, 'Ocena musi wynosić 1–5, a komentarz od 3 do 2000 znaków.')
-    }
-    let result
-    await updateCsv('reviews', async (reviews) => {
-      const target = reviews.find((item) => item.id === reviewId && item.studentId === user.id)
-      if (!target) throw new HttpError(404, 'Nie znaleziono Twojej opinii.')
-      const next = method === 'DELETE'
-        ? reviews.filter((item) => item.id !== reviewId)
-        : reviews.map((item) => item.id === reviewId ? {
-          ...item,
-          rating: String(rating),
-          comment,
-          updatedAt: new Date().toISOString(),
-        } : item)
-      result = method === 'PUT' ? next.find((item) => item.id === reviewId) : null
-      return { records: next, result: null }
-    })
-    return send(response, 200, method === 'PUT' ? { review: cleanReview(result, 'Ty') } : { success: true })
-  }
-
-  if (pathname.startsWith('/api/zoom/')) {
-    throw new HttpError(410, 'Integracja Zoom została wyłączona.')
+    return send(response, 200, { bookings: tutorBookings })
   }
 
   throw new HttpError(404, 'Nie znaleziono endpointu API.')

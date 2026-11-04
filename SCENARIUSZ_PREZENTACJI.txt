@@ -1,0 +1,141 @@
+Gdy urzytkownik jest nie zalogowany,
+ widzi on strone główną z wszystkimi korepetytorami. 
+
+Urzytkownik może kliknąć na wybrane konto korepetytora
+gdzie może zobaczyc ich zdjęcie profilowe 
+imię, nazwisko, cene za 40 minutową lekcje, ile ma lat doświadczenia,
+przedmioty których uczy oraz na jakim poziomie ich uczy.
+
+Po prawej stronie można zobaczyć kalendarz gdzie można zobaczyć dni w które można 
+zobaczyć w jakie dni można zapisać się na lekcję oraz w danym dniu na
+jakie godziny da sie zapisać, lecz nie zalogowany użytkownik niemoże sie zapisać na lekcję
+
+W prawym górnym rogu widać dwa guziki zaloguj i zarejestruj
+
+[wejdź w zarejestruj]
+
+W panelu zarejestruj urzytkownik musi wybrać czy jest uczniem czy korepetytorem
+oraz musi wpisać 
+swoje imię, nazwisko, adres email oraz hasło które musi wpisać 2 razy.
+
+[wejdź zaloguj]
+
+Tutaj urzytkownik może się zalogować za pomocą swojego emaila oraz hasła.
+Teraz pokaże panu przykładowe konto korepetytora
+
+[
+  wpisz w email
+  aleksandra.nowicka@example.com
+
+  hasło
+  1234aleksandra
+]
+
+Tutaj korepetytorzy odrazu są wrzuceni w panel edycji swojego konta,
+może on tutaj ustawić swojezdjęcie profilowe, może edytować swoje
+imię, nazwisko, opis konta, cene za lekcję, od którego roku uczy,
+przedmioty których naucza z listy wpisanych przedmiotów a jeśli wymaganego przedmiotu,
+tam nie ma to może wpisać nazwe tego przedmiotu i kliknąć dodaj i zostanie on
+dodany do listy, poniżej wybiera on poziom na jakim naucza oraz guzik 
+do apisywania tych ustawień, jeszcze niżej jest guzik do usuwania konta.
+
+Po prawej stronie wybiera on dni w które będzie nauczał oraz zakres godzin na każdy dzień.
+Poniżej są dwa kalendarze, na pierwszym widać przy kazdym górnym rogu kwadratu od
+każdego dnia liczbe rezerwacji na dany dzień. Poniższy kalendarz jest od
+ustawiania dni wolnych lub z innym zakresem godzin, obsługuje on od miesiąca do przodu.
+
+Klikając na każdy kwadrat korepetytor może ustawić dostępność danego dnia.
+
+[kliknij zielony kwadrat z 16 grudnia]
+
+Po kliknięciu pojawia się wybór czy dzień ma być cały wolny czy ma być 
+zmieniona rama czasowa. Domyślnie będzie ustawiony cały dzień wyłączony z lekcji.
+
+[kliknij zapisz dzień]
+
+Taki dzień będzie usunięty z kalendarza dla widoku klienta który pokazywałam na samym początku.
+taki dzień w kalendarzu korepetytora będzie zaznaczony na czerwono.
+
+[kliknij 17 grudnia oraz poniżej zaznacz "Lekcje tylko w wybranym przedziale]
+
+Urzytkownik może również poprostu zmienić rame czasową danego dnia w której będą odbywać
+się lekcje
+
+[kliknij zapisz dzień]
+
+To zmieni godziny dostępnych lekcji na dany dzień dla widoku klienta.
+Taki dzień w kalendarzu korepetytora będzie zaznaczony na żółto.
+
+
+[przeskroluj na samą góre i kliknij moje lekcje]
+
+Tutaj będą wypisane wszystkie lekcje jakie ma ten korepetytor, 
+są one wyświetlane w kolejności od góry te które będą odbywać się w najbliższym terminie.
+Z tąd korepetytor może się przedostać do chatu z uczniem ale może się też tam przedostać 
+przez guzik "wiadomości" w prawym górnym rogu ekranu
+
+[kliknij wiadomości]
+
+Tutaj znajdują się chatu pomiędzy uczniem a korepetytorem gdzie mogą ustalić 
+jak szczeguły lekcji i szczeguły odnoścnie zapłaty.
+
+[wejdź w któryś chat aby pokazać i wyślij tam jakiś keyboard smash]
+
+Za każdym razem gdy urzytkowwnik zapisze sie na lekcje z tym korepetytorem to
+zostanie wysłana wiadomość systemowa, a jak uzytkownik zapisze się na lekcje
+z danym korepetytorem po raz pierwszy to utworzy się chat.
+
+[Wyloguj się]
+
+Teraz pokaże konto ucznia
+
+[
+  Wejdź w zaloguj i wpisz
+  email
+  julkazygiel@gmail.com
+
+  hasło
+  1234julka
+]
+
+Urzytkownik będzie widział tą samą strone główną
+
+[
+  kliknij w frofil korepetytora
+  preferably Aleksandra Nowicka
+]
+
+Tym razem użytkownik może się zapisać na lekcję a jak to zrobi to wyświetli
+sie link do chatu z korepetytorem 
+
+[
+  kliknij na jakis dzień, jakąś godzine i zarezerwój lekcję
+  potem kliknij w otwórz czat z korepetytorem
+]
+
+Finalnie urzytkownik może edytować swój profil
+
+[kliknij w mój profil]
+
+Tu użytkownik może dodać zdjęcie, zmienić imięm, nazwisko oraz usunąć konto
+
+To tyle
+
+------------------------------------------------------------
+
+Cały projekt jest w repozytorium na githubie
+
+Frontend:
+  react (html i js)
+
+Backend:
+  php oraz mysql
+
+W bazie są zapisane:
+  chaty 
+  dane kont (hasła zakodowane)
+  tagi
+  zdjęcia profilowe
+  dane o dniach z kalendarzy korepetytorów
+
+https://tutorland.infinityfree.io/

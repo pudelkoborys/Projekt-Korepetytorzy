@@ -13,6 +13,22 @@ final class ApiError extends RuntimeException
     }
 }
 
+function cleanProfileImage(mixed $value): string
+{
+    if ($value === '') {
+        return '';
+    }
+    if (!is_string($value) || strlen($value) > 700000
+        || preg_match('#^data:image/webp;base64,([A-Za-z0-9+/]+={0,2})$#D', $value, $match) !== 1) {
+        throw new ApiError(400, 'Wybierz prawidłowe zdjęcie profilowe.');
+    }
+    $image = base64_decode($match[1], true);
+    if ($image === false || strlen($image) > 500000) {
+        throw new ApiError(400, 'Zdjęcie profilowe jest zbyt duże.');
+    }
+    return $value;
+}
+
 function config(): array
 {
     $file = __DIR__ . '/config.local.php';
@@ -50,6 +66,7 @@ function db(): PDO
             PDO::ATTR_EMULATE_PREPARES => false,
         ],
     );
+    $pdo->exec("SET time_zone = '+00:00'");
     return $pdo;
 }
 
@@ -60,13 +77,6 @@ function sendJson(int $status, array $body): never
     header('Cache-Control: no-store');
     header('X-Content-Type-Options: nosniff');
     echo json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-    exit;
-}
-
-function redirectTo(string $location): never
-{
-    header('Cache-Control: no-store');
-    header('Location: ' . $location, true, 302);
     exit;
 }
 
@@ -278,6 +288,7 @@ function publicUser(?array $user): ?array
         'firstName' => $user['first_name'],
         'lastName' => $user['last_name'],
         'tutorId' => $user['tutor_id'] ?? '',
+        'profileImage' => $user['profile_image'] ?? '',
     ];
 }
 
@@ -288,8 +299,9 @@ function currentUser(): ?array
         return null;
     }
     $statement = db()->prepare(
-        'SELECT u.id, u.role, u.first_name, u.last_name, u.email, u.tutor_id
+        'SELECT u.id, u.role, u.first_name, u.last_name, u.email, u.tutor_id, p.image_data AS profile_image
          FROM sessions s JOIN users u ON u.id = s.user_id
+         LEFT JOIN user_profile_photos p ON p.user_id = u.id
          WHERE s.token_hash = ? AND s.expires_at > UTC_TIMESTAMP() LIMIT 1',
     );
     $statement->execute([hash('sha256', $token)]);
@@ -330,261 +342,32 @@ function createSession(string $userId): void
     setSessionCookie($token, 14 * 24 * 60 * 60);
 }
 
-function zoomSettings(): array
+function tutorLevels(string $tutorId): array
 {
-    return config()['zoom'] ?? [];
-}
-
-function zoomConfigured(): bool
-{
-    $zoom = zoomSettings();
-    return !empty($zoom['client_id'])
-        && !empty($zoom['client_secret'])
-        && preg_match('/^[\da-f]{64}$/i', (string)($zoom['token_encryption_key'] ?? '')) === 1;
-}
-
-function zoomRedirectUri(): string
-{
-    return rtrim((string)(config()['app_origin'] ?? ''), '/') . '/api/zoom/callback';
-}
-
-function zoomAuthorizationUrl(string $state): string
-{
-    if (!zoomConfigured()) {
-        throw new ApiError(503, 'Uzupełnij konfigurację OAuth Zoom w api/config.local.php.');
-    }
-    return 'https://zoom.us/oauth/authorize?' . http_build_query([
-        'response_type' => 'code',
-        'client_id' => zoomSettings()['client_id'],
-        'redirect_uri' => zoomRedirectUri(),
-        'state' => $state,
-    ], '', '&', PHP_QUERY_RFC3986);
-}
-
-function zoomRequest(string $url, ?array $post = null, string $accessToken = ''): array
-{
-    if (!function_exists('curl_init')) {
-        throw new ApiError(503, 'Na hostingu brakuje rozszerzenia PHP cURL wymaganego przez Zoom.');
-    }
-    $handle = curl_init($url);
-    $headers = ['Accept: application/json'];
-    if ($accessToken !== '') {
-        $headers[] = 'Authorization: Bearer ' . $accessToken;
-    }
-    curl_setopt_array($handle, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => false,
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_TIMEOUT => 20,
-        CURLOPT_HTTPHEADER => $headers,
-    ]);
-    if ($post !== null) {
-        curl_setopt($handle, CURLOPT_POST, true);
-        curl_setopt($handle, CURLOPT_POSTFIELDS, json_encode($post, JSON_THROW_ON_ERROR));
-        $headers[] = 'Content-Type: application/json';
-        curl_setopt($handle, CURLOPT_HTTPHEADER, $headers);
-    }
-    $response = curl_exec($handle);
-    $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-    $error = curl_error($handle);
-    curl_close($handle);
-    if ($response === false) {
-        error_log('Tutorland Zoom HTTP request failed: ' . $error);
-        throw new ApiError(502, 'Serwer nie może połączyć się z Zoom. Sprawdź, czy hosting zezwala na połączenia wychodzące.');
-    }
-    try {
-        $payload = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
-    } catch (JsonException) {
-        throw new ApiError(502, 'Zoom zwrócił nieprawidłową odpowiedź.');
-    }
-    if ($status < 200 || $status >= 300 || !is_array($payload)) {
-        $message = $payload['error_description'] ?? $payload['message'] ?? $payload['reason'] ?? 'Błąd usługi Zoom.';
-        throw new ApiError(502, 'Żądanie do Zoom nie powiodło się: ' . (string)$message);
-    }
-    return $payload;
-}
-
-function zoomTokenRequest(array $parameters): array
-{
-    if (!function_exists('curl_init')) {
-        throw new ApiError(503, 'Na hostingu brakuje rozszerzenia PHP cURL wymaganego przez Zoom.');
-    }
-    $zoom = zoomSettings();
-    $headers = ['Authorization: Basic ' . base64_encode($zoom['client_id'] . ':' . $zoom['client_secret'])];
-    $handle = curl_init('https://zoom.us/oauth/token');
-    curl_setopt_array($handle, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => http_build_query($parameters),
-        CURLOPT_HTTPHEADER => $headers,
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_TIMEOUT => 20,
-    ]);
-    $response = curl_exec($handle);
-    $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-    $error = curl_error($handle);
-    curl_close($handle);
-    if ($response === false) {
-        error_log('Tutorland Zoom token request failed: ' . $error);
-        throw new ApiError(502, 'Serwer nie może połączyć się z Zoom. Sprawdź ograniczenia połączeń wychodzących hostingu.');
-    }
-    try {
-        $payload = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
-    } catch (JsonException) {
-        throw new ApiError(502, 'Zoom zwrócił nieprawidłową odpowiedź tokenu.');
-    }
-    if ($status < 200 || $status >= 300 || !is_array($payload)) {
-        throw new ApiError(502, 'Zoom OAuth nie powiódł się: ' . (string)($payload['error_description'] ?? $payload['reason'] ?? 'błąd odpowiedzi'));
-    }
-    return $payload;
-}
-
-function storeZoomTokens(string $userId, array $tokens): void
-{
-    $key = hex2bin((string)zoomSettings()['token_encryption_key']);
-    $iv = random_bytes(12);
-    $tag = '';
-    $ciphertext = openssl_encrypt(
-        json_encode($tokens, JSON_THROW_ON_ERROR),
-        'aes-256-gcm',
-        $key,
-        OPENSSL_RAW_DATA,
-        $iv,
-        $tag,
-    );
-    if ($ciphertext === false) {
-        throw new RuntimeException('Nie udało się zaszyfrować tokenów Zoom.');
-    }
     $statement = db()->prepare(
-        'INSERT INTO zoom_connections (user_id, encrypted_tokens, iv, auth_tag)
-         VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE encrypted_tokens = VALUES(encrypted_tokens),
-         iv = VALUES(iv), auth_tag = VALUES(auth_tag)',
+        'SELECT level FROM tutor_levels WHERE tutor_id = ? ORDER BY level',
     );
-    $statement->execute([$userId, base64_encode($ciphertext), $iv, $tag]);
-}
-
-function readZoomTokens(string $userId): ?array
-{
-    $statement = db()->prepare('SELECT encrypted_tokens, iv, auth_tag FROM zoom_connections WHERE user_id = ?');
-    $statement->execute([$userId]);
-    $record = $statement->fetch();
-    if (!$record) {
-        return null;
-    }
-    $key = hex2bin((string)zoomSettings()['token_encryption_key']);
-    $plain = openssl_decrypt(
-        base64_decode($record['encrypted_tokens'], true) ?: '',
-        'aes-256-gcm',
-        $key,
-        OPENSSL_RAW_DATA,
-        $record['iv'],
-        $record['auth_tag'],
+    $statement->execute([$tutorId]);
+    return array_map(
+        static fn(array $row): string => (string)$row['level'],
+        $statement->fetchAll(),
     );
-    if ($plain === false) {
-        throw new RuntimeException('Nie udało się odszyfrować tokenów Zoom. Sprawdź klucz szyfrowania.');
-    }
-    $tokens = json_decode($plain, true, 512, JSON_THROW_ON_ERROR);
-    return is_array($tokens) ? $tokens : null;
-}
-
-function zoomIdentity(string $code): array
-{
-    $tokens = zoomTokenRequest([
-        'grant_type' => 'authorization_code',
-        'code' => $code,
-        'redirect_uri' => zoomRedirectUri(),
-    ]);
-    $accessToken = (string)($tokens['access_token'] ?? '');
-    if ($accessToken === '') {
-        throw new ApiError(502, 'Zoom nie zwrócił tokenu dostępu.');
-    }
-    $profile = zoomRequest('https://api.zoom.us/v2/users/me', null, $accessToken);
-    $email = strtolower(trim((string)($profile['email'] ?? '')));
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        throw new ApiError(502, 'Konto Zoom nie udostępniło prawidłowego adresu e-mail.');
-    }
-    return [
-        'email' => $email,
-        'firstName' => trim((string)($profile['first_name'] ?? '')),
-        'lastName' => trim((string)($profile['last_name'] ?? '')),
-        'imageUrl' => preg_match('/^https:\/\//i', (string)($profile['pic_url'] ?? ''))
-            ? (string)$profile['pic_url']
-            : '',
-        'tokens' => [
-            'accessToken' => $accessToken,
-            'refreshToken' => (string)($tokens['refresh_token'] ?? ''),
-            'expiresAt' => time() + (int)($tokens['expires_in'] ?? 0),
-        ],
-    ];
-}
-
-function zoomAccessToken(string $userId): string
-{
-    $tokens = readZoomTokens($userId);
-    if ($tokens === null) {
-        throw new ApiError(409, 'Korepetytor nie połączył jeszcze konta Zoom.');
-    }
-    if ((int)$tokens['expiresAt'] > time() + 60) {
-        return (string)$tokens['accessToken'];
-    }
-    if (empty($tokens['refreshToken'])) {
-        throw new ApiError(409, 'Połączenie z Zoom wygasło. Połącz konto ponownie.');
-    }
-    $refreshed = zoomTokenRequest([
-        'grant_type' => 'refresh_token',
-        'refresh_token' => $tokens['refreshToken'],
-    ]);
-    $tokens = [
-        'accessToken' => (string)$refreshed['access_token'],
-        'refreshToken' => (string)($refreshed['refresh_token'] ?? $tokens['refreshToken']),
-        'expiresAt' => time() + (int)$refreshed['expires_in'],
-    ];
-    storeZoomTokens($userId, $tokens);
-    return $tokens['accessToken'];
-}
-
-function createZoomMeeting(array $user, array $booking, array $tutor): array
-{
-    $accessToken = zoomAccessToken((string)$user['id']);
-    $payload = zoomRequest('https://api.zoom.us/v2/users/me/meetings', [
-        'topic' => 'Tutorland - ' . $booking['subject'] . ' z ' . $tutor['first_name'] . ' ' . $tutor['last_name'],
-        'type' => 2,
-        'start_time' => $booking['lesson_date'] . 'T' . substr($booking['start_time'], 0, 5) . ':00',
-        'duration' => LESSON_MINUTES,
-        'timezone' => (string)(config()['timezone'] ?? 'Europe/Warsaw'),
-        'settings' => json_encode(['waiting_room' => true], JSON_THROW_ON_ERROR),
-    ], $accessToken);
-    if (!is_string($payload['join_url'] ?? null) || !is_string($payload['start_url'] ?? null)) {
-        throw new ApiError(502, 'Zoom zwrócił spotkanie bez wymaganych linków.');
-    }
-    return [
-        'id' => (string)($payload['id'] ?? ''),
-        'joinUrl' => $payload['join_url'],
-        'startUrl' => $payload['start_url'],
-    ];
 }
 
 function tutorSubjects(string $tutorId): array
 {
-    $statement = db()->prepare('SELECT subject FROM tutor_subjects WHERE tutor_id = ? ORDER BY subject');
+    $statement = db()->prepare(
+        'SELECT subject FROM tutor_subjects WHERE tutor_id = ? ORDER BY subject',
+    );
     $statement->execute([$tutorId]);
-    return array_column($statement->fetchAll(), 'subject');
-}
-
-function tutorLevels(string $tutorId): array
-{
-    $statement = db()->prepare('SELECT level FROM tutor_levels WHERE tutor_id = ? ORDER BY level');
-    $statement->execute([$tutorId]);
-    return array_column($statement->fetchAll(), 'level');
+    return array_map(
+        static fn(array $row): string => (string)$row['subject'],
+        $statement->fetchAll(),
+    );
 }
 
 function tutorPublic(array $tutor): array
 {
-    $statement = db()->prepare(
-        'SELECT COUNT(*) AS review_count, AVG(rating) AS average_rating FROM reviews WHERE tutor_id = ?',
-    );
-    $statement->execute([$tutor['tutor_id']]);
-    $summary = $statement->fetch();
     return [
         'tutorId' => $tutor['tutor_id'],
         'firstName' => $tutor['first_name'],
@@ -592,13 +375,19 @@ function tutorPublic(array $tutor): array
         'age' => (int)($tutor['age'] ?? 0),
         'teachingSinceYear' => (int)$tutor['teaching_since_year'],
         'description' => $tutor['description'],
-        'rating' => round((float)($summary['average_rating'] ?? 0), 1),
-        'reviewCount' => (int)($summary['review_count'] ?? 0),
         'pricePerLesson' => (int)$tutor['price_per_lesson'],
         'levels' => tutorLevels((string)$tutor['tutor_id']),
         'subjects' => tutorSubjects((string)$tutor['tutor_id']),
-        'imagePath' => $tutor['image_path'],
+        'imagePath' => profileImageForUser((string)$tutor['user_id']) ?: $tutor['image_path'],
     ];
+}
+
+function profileImageForUser(string $userId): string
+{
+    $statement = db()->prepare('SELECT image_data FROM user_profile_photos WHERE user_id = ? LIMIT 1');
+    $statement->execute([$userId]);
+    $image = $statement->fetchColumn();
+    return is_string($image) ? $image : '';
 }
 
 function findTutor(string $tutorId): ?array
@@ -611,16 +400,41 @@ function findTutor(string $tutorId): ?array
     return $statement->fetch() ?: null;
 }
 
-function cleanReview(array $review, string $studentName = 'Uczeń'): array
+function requireChat(string $chatId, array $user): array
+{
+    $statement = db()->prepare(
+        'SELECT c.*, s.first_name AS student_first, s.last_name AS student_last,
+         sp.image_data AS student_image, t.first_name AS tutor_first, t.last_name AS tutor_last,
+         tp.image_path AS tutor_image, tp.user_id AS tutor_user_id, tphoto.image_data AS tutor_profile_image
+         FROM chat_conversations c
+         JOIN users s ON s.id = c.student_id
+         JOIN tutor_profiles tp ON tp.tutor_id = c.tutor_id
+         JOIN users t ON t.id = tp.user_id
+         LEFT JOIN user_profile_photos sp ON sp.user_id = s.id
+         LEFT JOIN user_profile_photos tphoto ON tphoto.user_id = t.id
+         WHERE c.id = ? AND ((? = \'student\' AND c.student_id = ?)
+         OR (? = \'tutor\' AND c.tutor_id = ?)) LIMIT 1',
+    );
+    $statement->execute([$chatId, $user['role'], $user['id'], $user['role'], $user['tutor_id'] ?? '']);
+    return $statement->fetch() ?: throw new ApiError(404, 'Nie znaleziono rozmowy.');
+}
+
+function purgeExpiredChatMessages(): void
+{
+    db()->exec('DELETE FROM chat_messages WHERE created_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MONTH)');
+}
+
+function publicChat(array $chat, ?array $latestMessage = null): array
 {
     return [
-        'id' => $review['id'],
-        'tutorId' => $review['tutor_id'],
-        'bookingId' => $review['booking_id'],
-        'rating' => (int)$review['rating'],
-        'date' => $review['review_date'],
-        'comment' => $review['comment'],
-        'studentName' => $studentName,
+        'id' => $chat['id'],
+        'tutorId' => $chat['tutor_id'],
+        'studentName' => $chat['student_first'] . ' ' . $chat['student_last'],
+        'studentImage' => $chat['student_image'] ?? '',
+        'tutorName' => $chat['tutor_first'] . ' ' . $chat['tutor_last'],
+        'tutorImage' => ($chat['tutor_profile_image'] ?? '') ?: $chat['tutor_image'],
+        'latestMessage' => $latestMessage['content'] ?? '',
+        'lastActivity' => $latestMessage['created_at'] ?? $chat['created_at'],
     ];
 }
 
@@ -657,18 +471,28 @@ function validateSchedule(mixed $weekly, mixed $daysOff): array
         }
     }
     $today = nowInAppZone()->format('Y-m-d');
-    foreach ($daysOff as $date) {
-        if (!is_string($date)) {
+    $daysOffByDate = [];
+    foreach ($daysOff as $item) {
+        $dayOff = is_string($item) ? ['date' => $item] : $item;
+        if (!is_array($dayOff) || !is_string($dayOff['date'] ?? null)
+            || !isDate($dayOff['date']) || $dayOff['date'] < $today) {
             throw new ApiError(400, 'Dni wolne muszą być prawidłowymi datami bieżącymi lub przyszłymi.');
         }
-    }
-    $daysOff = array_values(array_unique($daysOff));
-    foreach ($daysOff as $date) {
-        if (!is_string($date) || !isDate($date) || $date < $today) {
-            throw new ApiError(400, 'Dni wolne muszą być prawidłowymi datami bieżącymi lub przyszłymi.');
+        $startTime = $dayOff['startTime'] ?? '';
+        $endTime = $dayOff['endTime'] ?? '';
+        if (!is_string($startTime) || !is_string($endTime)
+            || (($startTime !== '' || $endTime !== '')
+                && (timeMinutes($startTime) === false || timeMinutes($endTime) === false
+                    || timeMinutes($endTime) - timeMinutes($startTime) < LESSON_MINUTES))) {
+            throw new ApiError(400, 'Dostępność w dniu wolnym musi obejmować co najmniej jedną lekcję 40-minutową.');
         }
+        $daysOffByDate[$dayOff['date']] = [
+            'date' => $dayOff['date'],
+            'startTime' => $startTime,
+            'endTime' => $endTime,
+        ];
     }
-    return [$normalized, $daysOff];
+    return [$normalized, array_values($daysOffByDate)];
 }
 
 function validateBookingSlot(
@@ -692,10 +516,24 @@ function validateBookingSlot(
     if (!in_array($subject, tutorSubjects((string)$tutor['tutor_id']), true)) {
         throw new ApiError(400, 'Wybierz przedmiot z oferty korepetytora.');
     }
-    if (in_array($date, $daysOff, true)) {
+    $dayOff = null;
+    foreach ($daysOff as $item) {
+        if (($item['date'] ?? '') === $date) {
+            $dayOff = $item;
+            break;
+        }
+    }
+    if ($dayOff !== null && ($dayOff['startTime'] === '' || $dayOff['endTime'] === '')) {
         throw new ApiError(409, 'Korepetytor oznaczył ten dzień jako wolny.');
     }
     $weekday = (int)(new DateTimeImmutable($date, new DateTimeZone('UTC')))->format('w');
+    if ($dayOff !== null) {
+        $availability = [[
+            'weekday' => $weekday,
+            'start_time' => $dayOff['startTime'],
+            'end_time' => $dayOff['endTime'],
+        ]];
+    }
     $allowed = false;
     foreach ($availability as $range) {
         $rangeStart = timeMinutes(substr((string)$range['start_time'], 0, 5));
@@ -721,191 +559,6 @@ function validateBookingSlot(
     return minutesTime($start + LESSON_MINUTES);
 }
 
-function saveZoomIdentity(array $user, array $identity): void
-{
-    storeZoomTokens((string)$user['id'], $identity['tokens']);
-    if ($identity['imageUrl'] !== '' && ($user['tutor_id'] ?? '') !== '') {
-        $statement = db()->prepare('UPDATE tutor_profiles SET image_path = ? WHERE tutor_id = ?');
-        $statement->execute([$identity['imageUrl'], $user['tutor_id']]);
-    }
-}
-
-function createZoomForPendingBookings(array $tutor, array $user): void
-{
-    $statement = db()->prepare(
-        "SELECT * FROM bookings WHERE tutor_id = ? AND zoom_status IN ('pending', 'failed') AND zoom_join_url = ''",
-    );
-    $statement->execute([$tutor['tutor_id']]);
-    foreach ($statement->fetchAll() as $booking) {
-        try {
-            $meeting = createZoomMeeting($user, $booking, $tutor);
-            $update = db()->prepare(
-                "UPDATE bookings SET zoom_status = 'ready', zoom_meeting_id = ?, zoom_join_url = ?,
-                 zoom_start_url = ?, zoom_error = '' WHERE id = ?",
-            );
-            $update->execute([$meeting['id'], $meeting['joinUrl'], $meeting['startUrl'], $booking['id']]);
-        } catch (Throwable $error) {
-            error_log('Nie udało się utworzyć spotkania Zoom dla rezerwacji ' . $booking['id'] . ': ' . $error->getMessage());
-            $update = db()->prepare("UPDATE bookings SET zoom_status = 'failed', zoom_error = ? WHERE id = ?");
-            $update->execute([mb_substr($error->getMessage(), 0, 500), $booking['id']]);
-        }
-    }
-}
-
-function storeOAuthState(string $state, ?string $userId, string $purpose, string $role, string $returnTo): void
-{
-    $statement = db()->prepare('DELETE FROM oauth_states WHERE expires_at <= UTC_TIMESTAMP()');
-    $statement->execute();
-    $statement = db()->prepare(
-        'INSERT INTO oauth_states (state_hash, user_id, purpose, role, return_to, expires_at)
-         VALUES (?, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 10 MINUTE))',
-    );
-    $statement->execute([hash('sha256', $state), $userId, $purpose, $role, $returnTo]);
-}
-
-function safeReturnTo(mixed $value, string $fallback = '/'): string
-{
-    if (!is_string($value) || !str_starts_with($value, '/') || str_starts_with($value, '//')
-        || str_contains($value, '\\')) {
-        return $fallback;
-    }
-    return $value;
-}
-
-function handleOAuthCallback(): never
-{
-    $state = (string)($_GET['state'] ?? '');
-    if ($state === '') {
-        throw new ApiError(400, 'Nieprawidłowy lub wygasły powrót z Zoom OAuth.');
-    }
-    $pdo = db();
-    $pdo->beginTransaction();
-    try {
-        $statement = $pdo->prepare('SELECT * FROM oauth_states WHERE state_hash = ? AND expires_at > UTC_TIMESTAMP() FOR UPDATE');
-        $statement->execute([hash('sha256', $state)]);
-        $saved = $statement->fetch();
-        if (!$saved) {
-            $pdo->rollBack();
-            throw new ApiError(400, 'Nieprawidłowy lub wygasły powrót z Zoom OAuth.');
-        }
-        $delete = $pdo->prepare('DELETE FROM oauth_states WHERE state_hash = ?');
-        $delete->execute([hash('sha256', $state)]);
-        $pdo->commit();
-    } catch (Throwable $error) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        throw $error;
-    }
-    if (in_array($saved['purpose'], ['login', 'register'], true)) {
-        redirectTo('/login?error=zoom-login-disabled');
-    }
-    if (isset($_GET['error'])) {
-        $destination = $saved['purpose'] === 'connect'
-            ? '/profile?zoomError=cancelled'
-            : ($saved['purpose'] === 'register' ? '/register?zoomError=cancelled' : '/login?zoomError=cancelled');
-        redirectTo($destination);
-    }
-    $code = (string)($_GET['code'] ?? '');
-    if ($code === '') {
-        throw new ApiError(400, 'Nieprawidłowy lub wygasły powrót z Zoom OAuth.');
-    }
-    $identity = zoomIdentity($code);
-    if ($saved['purpose'] === 'login' || $saved['purpose'] === 'register') {
-        $statement = db()->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
-        $statement->execute([$identity['email']]);
-        $user = $statement->fetch();
-        if ($saved['purpose'] === 'register') {
-            if ($user) {
-                redirectTo('/login?zoomError=account-exists');
-            }
-            $role = (string)$saved['role'];
-            if (!in_array($role, ['student', 'tutor'], true)) {
-                throw new ApiError(400, 'Nieprawidłowa rola rejestracji.');
-            }
-            $firstName = isValidName($identity['firstName']) ? $identity['firstName'] : 'Nowy';
-            $lastName = isValidName($identity['lastName']) ? $identity['lastName'] : 'Użytkownik';
-            $id = randomId();
-            $tutorId = $role === 'tutor'
-                ? trim((string)preg_replace('/[^a-z0-9]+/', '-', strtolower($firstName)), '-') . '-' . bin2hex(random_bytes(5))
-                : null;
-            $pdo = db();
-            try {
-                $pdo->beginTransaction();
-                $insert = $pdo->prepare(
-                    'INSERT INTO users (id, role, first_name, last_name, email, password_hash, tutor_id)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)',
-                );
-                $insert->execute([$id, $role, $firstName, $lastName, $identity['email'], '', $tutorId]);
-                if ($role === 'tutor') {
-                    $insert = $pdo->prepare(
-                        'INSERT INTO tutor_profiles (tutor_id, user_id, teaching_since_year, description, price_per_lesson, image_path)
-                         VALUES (?, ?, ?, ?, 100, ?)',
-                    );
-                    $insert->execute([
-                        $tutorId,
-                        $id,
-                        (int)nowInAppZone()->format('Y'),
-                        'Dodaj opis swojej oferty i doświadczenia.',
-                        $identity['imageUrl'],
-                    ]);
-                    $pdo->prepare('INSERT INTO tutor_subjects (tutor_id, subject) VALUES (?, ?)')
-                        ->execute([$tutorId, 'Matematyka']);
-                    $pdo->prepare('INSERT INTO tutor_levels (tutor_id, level) VALUES (?, ?)')
-                        ->execute([$tutorId, 'primary']);
-                }
-                $pdo->commit();
-            } catch (PDOException $error) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                if ($error->getCode() === '23000') {
-                    redirectTo('/login?zoomError=account-exists');
-                }
-                throw $error;
-            } catch (Throwable $error) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                throw $error;
-            }
-            $statement = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
-            $statement->execute([$id]);
-            $user = $statement->fetch();
-            if (!$user) {
-                throw new RuntimeException('Nie udało się odczytać utworzonego konta.');
-            }
-            if ($role === 'tutor') {
-                saveZoomIdentity($user, $identity);
-            }
-            createSession((string)$user['id']);
-            redirectTo('/profile?complete=1');
-        }
-        if (!$user) {
-            redirectTo('/login?zoomError=account-not-found');
-        }
-        if ($user['role'] === 'tutor') {
-            saveZoomIdentity($user, $identity);
-            createZoomForPendingBookings(ownedTutor($user), $user);
-        }
-    } else {
-        $statement = db()->prepare('SELECT * FROM users WHERE id = ? AND role = ? LIMIT 1');
-        $statement->execute([$saved['user_id'], 'tutor']);
-        $user = $statement->fetch();
-        if (!$user) {
-            throw new ApiError(403, 'Nie znaleziono konta korepetytora.');
-        }
-        if (!hash_equals(strtolower((string)$user['email']), $identity['email'])) {
-            throw new ApiError(403, 'Adres e-mail konta Zoom musi być zgodny z adresem konta Tutorland.');
-        }
-        saveZoomIdentity($user, $identity);
-        createZoomForPendingBookings(ownedTutor($user), $user);
-        redirectTo('/profile?zoom=connected');
-    }
-    createSession((string)$user['id']);
-    redirectTo(safeReturnTo($saved['return_to'], $user['role'] === 'tutor' ? '/profile' : '/'));
-}
-
 function handleApi(): never
 {
     db();
@@ -914,9 +567,6 @@ function handleApi(): never
     $path = $path === '' ? '/' : $path;
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 
-    if (str_starts_with($path, '/api/zoom/')) {
-        throw new ApiError(410, 'Integracja Zoom została wyłączona.');
-    }
     if (in_array($method, ['POST', 'PUT', 'DELETE'], true)) {
         assertSameOrigin();
     }
@@ -957,6 +607,9 @@ function handleApi(): never
             || strlen($email) > 254 || filter_var($email, FILTER_VALIDATE_EMAIL) === false
             || !is_string($password) || strlen($password) < 8 || strlen($password) > 256) {
             throw new ApiError(400, 'Sprawdź imię, nazwisko, adres e-mail, rolę i hasło (co najmniej 8 znaków).');
+        }
+        if (($input['passwordConfirmation'] ?? null) !== $password) {
+            throw new ApiError(400, 'Wpisane hasła nie są takie same.');
         }
 
         $id = randomId();
@@ -1044,6 +697,21 @@ function handleApi(): never
         $statement->execute([trim($input['firstName']), trim($input['lastName']), $user['id']]);
         sendJson(200, ['success' => true]);
     }
+    if ($method === 'PUT' && $path === '/api/profile/photo') {
+        $user = requireUser();
+        $profileImage = cleanProfileImage(body()['profileImage'] ?? null);
+        if ($profileImage === '') {
+            $statement = db()->prepare('DELETE FROM user_profile_photos WHERE user_id = ?');
+            $statement->execute([$user['id']]);
+        } else {
+            $statement = db()->prepare(
+                'INSERT INTO user_profile_photos (user_id, image_data) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE image_data = VALUES(image_data)',
+            );
+            $statement->execute([$user['id'], $profileImage]);
+        }
+        sendJson(200, ['success' => true]);
+    }
     if ($method === 'POST' && $path === '/api/auth/delete-account') {
         $user = requireUser();
         $pdo = db();
@@ -1097,12 +765,18 @@ function handleApi(): never
             'endTime' => substr((string)$range['end_time'], 0, 5),
         ], $statement->fetchAll());
         $statement = db()->prepare(
-            'SELECT day_off FROM tutor_days_off WHERE tutor_id = ? AND (? = \'\' OR day_off LIKE ?)',
+            'SELECT day_off AS date, NULL AS start_time, NULL AS end_time FROM tutor_days_off
+             WHERE tutor_id = ? AND (? = \'\' OR day_off LIKE ?)
+             UNION ALL
+             SELECT lesson_date AS date, start_time, end_time FROM tutor_day_availability
+             WHERE tutor_id = ? AND (? = \'\' OR lesson_date LIKE ?) ORDER BY date',
         );
-        $statement->execute([$tutorId, $prefix, $prefix . '%']);
+        $statement->execute([$tutorId, $prefix, $prefix . '%', $tutorId, $prefix, $prefix . '%']);
         $daysOff = array_map(static fn(array $row): array => [
             'tutorId' => $tutorId,
-            'date' => $row['day_off'],
+            'date' => $row['date'],
+            'startTime' => $row['start_time'] === null ? '' : substr((string)$row['start_time'], 0, 5),
+            'endTime' => $row['end_time'] === null ? '' : substr((string)$row['end_time'], 0, 5),
         ], $statement->fetchAll());
         $statement = db()->prepare(
             'SELECT lesson_date, start_time, end_time FROM bookings WHERE tutor_id = ? ORDER BY lesson_date, start_time',
@@ -1122,33 +796,127 @@ function handleApi(): never
         if (!$tutor) {
             throw new ApiError(404, 'Nie znaleziono korepetytora.');
         }
+        sendJson(200, ['tutor' => tutorPublic($tutor)]);
+    }
+
+    if ($method === 'GET' && (
+        $path === '/api/chats'
+        || ($path === '/api/messages' && !array_key_exists('chatId', $_GET))
+    )) {
+        $user = requireUser();
+        purgeExpiredChatMessages();
         $statement = db()->prepare(
-            'SELECT r.*, u.first_name, u.last_name FROM reviews r
-             JOIN users u ON u.id = r.student_id WHERE r.tutor_id = ? ORDER BY r.review_date DESC, r.updated_at DESC',
+            'SELECT c.*, s.first_name AS student_first, s.last_name AS student_last,
+             sp.image_data AS student_image, t.first_name AS tutor_first, t.last_name AS tutor_last,
+             tp.image_path AS tutor_image, tphoto.image_data AS tutor_profile_image,
+             (SELECT m.content FROM chat_messages m WHERE m.conversation_id = c.id
+              AND m.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MONTH)
+              ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS latest_content,
+             COALESCE((SELECT m.created_at FROM chat_messages m WHERE m.conversation_id = c.id
+              AND m.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MONTH)
+              ORDER BY m.created_at DESC, m.id DESC LIMIT 1), c.created_at) AS last_activity
+             FROM chat_conversations c
+             JOIN users s ON s.id = c.student_id
+             JOIN tutor_profiles tp ON tp.tutor_id = c.tutor_id
+             JOIN users t ON t.id = tp.user_id
+             LEFT JOIN user_profile_photos sp ON sp.user_id = s.id
+             LEFT JOIN user_profile_photos tphoto ON tphoto.user_id = t.id
+             WHERE (? = \'student\' AND c.student_id = ?) OR (? = \'tutor\' AND c.tutor_id = ?)
+             ORDER BY last_activity DESC',
         );
-        $statement->execute([$tutorId]);
-        $reviews = array_map(static fn(array $review): array => cleanReview(
-            $review,
-            $review['first_name'] . ' ' . $review['last_name'],
-        ), $statement->fetchAll());
-        sendJson(200, ['tutor' => tutorPublic($tutor), 'reviews' => $reviews]);
+        $statement->execute([$user['role'], $user['id'], $user['role'], $user['tutor_id'] ?? '']);
+        $chats = array_map(static fn(array $chat): array => publicChat($chat, [
+            'content' => $chat['latest_content'] ?? '',
+            'created_at' => $chat['last_activity'],
+        ]), $statement->fetchAll());
+        sendJson(200, ['chats' => $chats]);
+    }
+
+    $chatMessagesMatch = preg_match('#^/api/chats/([^/]+)/messages$#', $path, $match) === 1;
+    if (($chatMessagesMatch || $path === '/api/messages')
+        && ($method === 'POST' || ($method === 'GET' && array_key_exists('chatId', $_GET)))) {
+        $user = requireUser();
+        $input = $method === 'POST' ? body() : [];
+        $chatId = $chatMessagesMatch
+            ? rawurldecode($match[1])
+            : ($method === 'GET' ? ($_GET['chatId'] ?? '') : ($input['chatId'] ?? ''));
+        if (!is_string($chatId) || $chatId === '') {
+            throw new ApiError(400, 'Wybierz prawidłową rozmowę.');
+        }
+        purgeExpiredChatMessages();
+        $chat = requireChat($chatId, $user);
+        if ($method === 'GET') {
+            $statement = db()->prepare(
+                'SELECT m.id, m.conversation_id, m.sender_id, m.message_type, m.content, m.created_at,
+                 u.first_name, u.last_name, p.image_data AS sender_image
+                 FROM chat_messages m JOIN users u ON u.id = m.sender_id
+                 LEFT JOIN user_profile_photos p ON p.user_id = u.id
+                 WHERE m.conversation_id = ? ORDER BY m.created_at, m.id',
+            );
+            $statement->execute([$chat['id']]);
+            $messages = array_map(static fn(array $message): array => [
+                'id' => $message['id'],
+                'chatId' => $message['conversation_id'],
+                'senderId' => $message['sender_id'],
+                'senderName' => $message['message_type'] === 'booking_notice'
+                    ? 'Informacja o rezerwacji'
+                    : $message['first_name'] . ' ' . $message['last_name'],
+                'senderImage' => $message['sender_image'] ?? '',
+                'messageType' => $message['message_type'],
+                'content' => $message['content'],
+                'createdAt' => (new DateTimeImmutable($message['created_at'], new DateTimeZone('UTC')))->format('Y-m-d\\TH:i:s\\Z'),
+            ], $statement->fetchAll());
+            sendJson(200, ['messages' => $messages]);
+        }
+
+        $content = is_string($input['content'] ?? null) ? trim($input['content']) : '';
+        if ($content === '' || mb_strlen($content) > 4000) {
+            throw new ApiError(400, 'Wiadomość musi zawierać od 1 do 4000 znaków.');
+        }
+        $messageId = randomId();
+        $statement = db()->prepare(
+            'INSERT INTO chat_messages (id, conversation_id, sender_id, message_type, content) VALUES (?, ?, ?, \'user\', ?)',
+        );
+        $statement->execute([$messageId, $chat['id'], $user['id'], $content]);
+        $statement = db()->prepare(
+            'SELECT m.id, m.conversation_id, m.sender_id, m.message_type, m.content, m.created_at,
+             u.first_name, u.last_name, p.image_data AS sender_image
+             FROM chat_messages m JOIN users u ON u.id = m.sender_id
+             LEFT JOIN user_profile_photos p ON p.user_id = u.id WHERE m.id = ?',
+        );
+        $statement->execute([$messageId]);
+        $message = $statement->fetch();
+        sendJson(201, ['message' => [
+            'id' => $message['id'],
+            'chatId' => $message['conversation_id'],
+            'senderId' => $message['sender_id'],
+            'senderName' => $message['first_name'] . ' ' . $message['last_name'],
+            'senderImage' => $message['sender_image'] ?? '',
+            'messageType' => $message['message_type'],
+            'content' => $message['content'],
+            'createdAt' => (new DateTimeImmutable($message['created_at'], new DateTimeZone('UTC')))->format('Y-m-d\\TH:i:s\\Z'),
+        ]]);
     }
 
     if ($method === 'GET' && $path === '/api/bookings') {
         $user = requireUser();
         if ($user['role'] === 'student') {
             $statement = db()->prepare(
-                'SELECT b.*, u.first_name AS student_first, u.last_name AS student_last,
+                'SELECT b.*, cc.id AS chat_id, u.first_name AS student_first, u.last_name AS student_last, sp.image_data AS student_image,
                  t.first_name AS tutor_first, t.last_name AS tutor_last
                  FROM bookings b JOIN users u ON u.id = b.student_id
+                 LEFT JOIN user_profile_photos sp ON sp.user_id = u.id
+                 LEFT JOIN chat_conversations cc ON cc.student_id = b.student_id AND cc.tutor_id = b.tutor_id
                  JOIN tutor_profiles p ON p.tutor_id = b.tutor_id
                  JOIN users t ON t.id = p.user_id WHERE b.student_id = ? ORDER BY b.lesson_date, b.start_time',
             );
         } else {
             $statement = db()->prepare(
-                'SELECT b.*, u.first_name AS student_first, u.last_name AS student_last,
+                'SELECT b.*, cc.id AS chat_id, u.first_name AS student_first, u.last_name AS student_last, sp.image_data AS student_image,
                  t.first_name AS tutor_first, t.last_name AS tutor_last
                  FROM bookings b JOIN users u ON u.id = b.student_id
+                 LEFT JOIN user_profile_photos sp ON sp.user_id = u.id
+                 LEFT JOIN chat_conversations cc ON cc.student_id = b.student_id AND cc.tutor_id = b.tutor_id
                  JOIN tutor_profiles p ON p.tutor_id = b.tutor_id
                  JOIN users t ON t.id = p.user_id WHERE b.tutor_id = ? ORDER BY b.lesson_date, b.start_time',
             );
@@ -1165,14 +933,13 @@ function handleApi(): never
                 'durationMinutes' => (string)$row['duration_minutes'],
                 'subject' => $row['subject'],
                 'level' => $row['education_level'],
-                'zoomStatus' => $row['zoom_status'],
-                'zoomJoinUrl' => $row['zoom_join_url'],
+                'chatId' => $row['chat_id'] ?? '',
                 'studentName' => $row['student_first'] . ' ' . $row['student_last'],
                 'tutorName' => $row['tutor_first'] . ' ' . $row['tutor_last'],
                 'isPast' => isBookingPast($row),
             ];
             if ($user['role'] === 'tutor') {
-                $item['zoomStartUrl'] = $row['zoom_start_url'];
+                $item['studentImage'] = $row['student_image'] ?? '';
             }
             $bookings[] = $item;
         }
@@ -1182,6 +949,7 @@ function handleApi(): never
     if ($method === 'POST' && $path === '/api/bookings') {
         $user = requireUser();
         requireRole($user, 'student');
+        purgeExpiredChatMessages();
         $input = body();
         $tutorId = (string)($input['tutorId'] ?? '');
         $date = (string)($input['date'] ?? '');
@@ -1213,9 +981,22 @@ function handleApi(): never
             );
             $statement->execute([$tutorId, $date]);
             $bookings = $statement->fetchAll();
-            $statement = $pdo->prepare('SELECT day_off FROM tutor_days_off WHERE tutor_id = ? AND day_off = ?');
+            $statement = $pdo->prepare('SELECT day_off AS date, \'\' AS startTime, \'\' AS endTime FROM tutor_days_off WHERE tutor_id = ? AND day_off = ?');
             $statement->execute([$tutorId, $date]);
-            $daysOff = array_column($statement->fetchAll(), 'day_off');
+            $daysOff = $statement->fetchAll();
+            $statement = $pdo->prepare(
+                'SELECT lesson_date AS date, start_time AS startTime, end_time AS endTime
+                 FROM tutor_day_availability WHERE tutor_id = ? AND lesson_date = ?',
+            );
+            $statement->execute([$tutorId, $date]);
+            $daysOff = [
+                ...$daysOff,
+                ...array_map(static fn(array $row): array => [
+                    'date' => $row['date'],
+                    'startTime' => substr((string)$row['startTime'], 0, 5),
+                    'endTime' => substr((string)$row['endTime'], 0, 5),
+                ], $statement->fetchAll()),
+            ];
             $statement = $pdo->prepare('SELECT weekday, start_time, end_time FROM tutor_availability WHERE tutor_id = ?');
             $statement->execute([$tutorId]);
             $endTime = validateBookingSlot(
@@ -1233,6 +1014,18 @@ function handleApi(): never
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             );
             $insert->execute([$id, $tutorId, $user['id'], $date, $startTime, $endTime, $subject, $level]);
+            $chatId = randomId();
+            $pdo->prepare(
+                'INSERT IGNORE INTO chat_conversations (id, student_id, tutor_id) VALUES (?, ?, ?)',
+            )->execute([$chatId, $user['id'], $tutorId]);
+            $chat = $pdo->prepare('SELECT id FROM chat_conversations WHERE student_id = ? AND tutor_id = ? LIMIT 1');
+            $chat->execute([$user['id'], $tutorId]);
+            $chatId = (string)$chat->fetchColumn();
+            $notice = 'Nowa rezerwacja lekcji: ' . $date . ', ' . substr($startTime, 0, 5) . '–' . substr($endTime, 0, 5)
+                . '; ' . $subject . ' (' . $level . '). Uczniu, napisz proszę do korepetytora, aby ustalić sposób przeprowadzenia zajęć oraz sposób i termin płatności.';
+            $pdo->prepare(
+                'INSERT INTO chat_messages (id, conversation_id, sender_id, message_type, content) VALUES (?, ?, ?, \'booking_notice\', ?)',
+            )->execute([randomId(), $chatId, $user['id'], $notice]);
             $pdo->commit();
             $booking = [
                 'id' => $id,
@@ -1243,9 +1036,7 @@ function handleApi(): never
                 'end_time' => $endTime,
                 'subject' => $subject,
                 'education_level' => $level,
-                'zoom_status' => 'pending',
-                'zoom_join_url' => '',
-                'zoom_start_url' => '',
+                'chat_id' => $chatId,
             ];
         } catch (Throwable $error) {
             if ($pdo->inTransaction()) {
@@ -1264,9 +1055,7 @@ function handleApi(): never
                 'durationMinutes' => (string)LESSON_MINUTES,
                 'subject' => $booking['subject'],
                 'level' => $booking['education_level'],
-                'zoomStatus' => $booking['zoom_status'],
-                'zoomJoinUrl' => $booking['zoom_join_url'],
-                ...(!empty($booking['zoom_error']) ? ['zoomError' => $booking['zoom_error']] : []),
+                'chatId' => $booking['chat_id'],
             ],
         ]);
     }
@@ -1331,7 +1120,19 @@ function handleApi(): never
         ], $statement->fetchAll());
         $statement = db()->prepare('SELECT day_off FROM tutor_days_off WHERE tutor_id = ? ORDER BY day_off');
         $statement->execute([$tutor['tutor_id']]);
-        sendJson(200, ['weekly' => $weekly, 'daysOff' => array_column($statement->fetchAll(), 'day_off')]);
+        $daysOff = array_map(static fn(array $row): array => [
+            'date' => $row['day_off'],
+            'startTime' => '',
+            'endTime' => '',
+        ], $statement->fetchAll());
+        $statement = db()->prepare('SELECT lesson_date, start_time, end_time FROM tutor_day_availability WHERE tutor_id = ? ORDER BY lesson_date');
+        $statement->execute([$tutor['tutor_id']]);
+        $specialHours = array_map(static fn(array $row): array => [
+            'date' => $row['lesson_date'],
+            'startTime' => substr((string)$row['start_time'], 0, 5),
+            'endTime' => substr((string)$row['end_time'], 0, 5),
+        ], $statement->fetchAll());
+        sendJson(200, ['weekly' => $weekly, 'daysOff' => [...$daysOff, ...$specialHours]]);
     }
     if ($method === 'PUT' && $path === '/api/tutor/availability') {
         $tutor = ownedTutor(requireUser());
@@ -1348,9 +1149,17 @@ function handleApi(): never
                 $insert->execute([$tutor['tutor_id'], $range['weekday'], $range['startTime'], $range['endTime']]);
             }
             $pdo->prepare('DELETE FROM tutor_days_off WHERE tutor_id = ?')->execute([$tutor['tutor_id']]);
+            $pdo->prepare('DELETE FROM tutor_day_availability WHERE tutor_id = ?')->execute([$tutor['tutor_id']]);
             $insert = $pdo->prepare('INSERT INTO tutor_days_off (tutor_id, day_off) VALUES (?, ?)');
-            foreach ($daysOff as $date) {
-                $insert->execute([$tutor['tutor_id'], $date]);
+            $insertHours = $pdo->prepare(
+                'INSERT INTO tutor_day_availability (tutor_id, lesson_date, start_time, end_time) VALUES (?, ?, ?, ?)',
+            );
+            foreach ($daysOff as $dayOff) {
+                if ($dayOff['startTime'] !== '' && $dayOff['endTime'] !== '') {
+                    $insertHours->execute([$tutor['tutor_id'], $dayOff['date'], $dayOff['startTime'], $dayOff['endTime']]);
+                } else {
+                    $insert->execute([$tutor['tutor_id'], $dayOff['date']]);
+                }
             }
             $pdo->commit();
         } catch (Throwable $error) {
@@ -1365,8 +1174,11 @@ function handleApi(): never
     if ($method === 'GET' && $path === '/api/tutor/notifications') {
         $tutor = ownedTutor(requireUser());
         $statement = db()->prepare(
-            'SELECT b.*, u.first_name, u.last_name FROM bookings b
-             JOIN users u ON u.id = b.student_id WHERE b.tutor_id = ? ORDER BY b.lesson_date, b.start_time',
+            'SELECT b.*, c.id AS chat_id, u.first_name, u.last_name, p.image_data AS student_image FROM bookings b
+             JOIN users u ON u.id = b.student_id
+             LEFT JOIN user_profile_photos p ON p.user_id = u.id
+             LEFT JOIN chat_conversations c ON c.student_id = b.student_id AND c.tutor_id = b.tutor_id
+             WHERE b.tutor_id = ? ORDER BY b.lesson_date, b.start_time',
         );
         $statement->execute([$tutor['tutor_id']]);
         $bookings = [];
@@ -1380,146 +1192,13 @@ function handleApi(): never
                 'durationMinutes' => (string)$row['duration_minutes'],
                 'subject' => $row['subject'],
                 'level' => $row['education_level'],
-                'zoomStatus' => $row['zoom_status'],
-                'zoomStartUrl' => $row['zoom_start_url'],
+                'chatId' => $row['chat_id'] ?? '',
                 'studentName' => $row['first_name'] . ' ' . $row['last_name'],
+                'studentImage' => $row['student_image'] ?? '',
                 'isPast' => isBookingPast($row),
             ];
         }
-        $statement = db()->prepare(
-            'SELECT r.*, u.first_name, u.last_name FROM reviews r
-             JOIN users u ON u.id = r.student_id WHERE r.tutor_id = ? ORDER BY r.review_date DESC',
-        );
-        $statement->execute([$tutor['tutor_id']]);
-        $reviews = array_map(static fn(array $review): array => cleanReview(
-            $review,
-            $review['first_name'] . ' ' . $review['last_name'],
-        ), $statement->fetchAll());
-        sendJson(200, ['bookings' => $bookings, 'reviews' => $reviews]);
-    }
-
-    if ($method === 'GET' && $path === '/api/reviews/mine') {
-        $user = requireUser();
-        requireRole($user, 'student');
-        $statement = db()->prepare(
-            'SELECT r.*, t.first_name AS tutor_first, t.last_name AS tutor_last
-             FROM reviews r JOIN tutor_profiles p ON p.tutor_id = r.tutor_id
-             JOIN users t ON t.id = p.user_id WHERE r.student_id = ? ORDER BY r.review_date DESC',
-        );
-        $statement->execute([$user['id']]);
-        $reviews = [];
-        foreach ($statement->fetchAll() as $review) {
-            $item = cleanReview($review, 'Ty');
-            $item['tutorName'] = $review['tutor_first'] . ' ' . $review['tutor_last'];
-            $reviews[] = $item;
-        }
-        sendJson(200, ['reviews' => $reviews]);
-    }
-    if ($method === 'POST' && $path === '/api/reviews') {
-        $user = requireUser();
-        requireRole($user, 'student');
-        $input = body();
-        $bookingId = (string)($input['bookingId'] ?? '');
-        $rating = filter_var($input['rating'] ?? null, FILTER_VALIDATE_INT);
-        $comment = trim((string)($input['comment'] ?? ''));
-        if ($rating === false || $rating < 1 || $rating > 5 || mb_strlen($comment) < 3 || mb_strlen($comment) > 2000) {
-            throw new ApiError(400, 'Ocena musi wynosić 1–5, a komentarz od 3 do 2000 znaków.');
-        }
-        $statement = db()->prepare('SELECT * FROM bookings WHERE id = ? AND student_id = ?');
-        $statement->execute([$bookingId, $user['id']]);
-        $booking = $statement->fetch();
-        if (!$booking || !isBookingPast($booking)) {
-            throw new ApiError(403, 'Opinię możesz dodać po zakończeniu własnej lekcji.');
-        }
-        $id = randomId();
-        try {
-            $statement = db()->prepare(
-                'INSERT INTO reviews (id, student_id, tutor_id, booking_id, rating, review_date, comment)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)',
-            );
-            $statement->execute([
-                $id,
-                $user['id'],
-                $booking['tutor_id'],
-                $bookingId,
-                $rating,
-                nowInAppZone()->format('Y-m-d'),
-                $comment,
-            ]);
-        } catch (PDOException $error) {
-            if ($error->getCode() === '23000') {
-                throw new ApiError(409, 'Masz już opinię dla tego korepetytora. Możesz ją edytować lub usunąć.');
-            }
-            throw $error;
-        }
-        sendJson(201, [
-            'review' => cleanReview([
-                'id' => $id,
-                'tutor_id' => $booking['tutor_id'],
-                'booking_id' => $bookingId,
-                'rating' => $rating,
-                'review_date' => nowInAppZone()->format('Y-m-d'),
-                'comment' => $comment,
-            ], 'Ty'),
-        ]);
-    }
-    if (preg_match('#^/api/reviews/([^/]+)$#', $path, $match) && in_array($method, ['PUT', 'DELETE'], true)) {
-        $user = requireUser();
-        requireRole($user, 'student');
-        $reviewId = rawurldecode($match[1]);
-        if ($method === 'DELETE') {
-            $statement = db()->prepare('DELETE FROM reviews WHERE id = ? AND student_id = ?');
-            $statement->execute([$reviewId, $user['id']]);
-            if ($statement->rowCount() === 0) {
-                throw new ApiError(404, 'Nie znaleziono Twojej opinii.');
-            }
-            sendJson(200, ['success' => true]);
-        }
-        $input = body();
-        $rating = filter_var($input['rating'] ?? null, FILTER_VALIDATE_INT);
-        $comment = trim((string)($input['comment'] ?? ''));
-        if ($rating === false || $rating < 1 || $rating > 5 || mb_strlen($comment) < 3 || mb_strlen($comment) > 2000) {
-            throw new ApiError(400, 'Ocena musi wynosić 1–5, a komentarz od 3 do 2000 znaków.');
-        }
-        $statement = db()->prepare(
-            'UPDATE reviews SET rating = ?, comment = ? WHERE id = ? AND student_id = ?',
-        );
-        $statement->execute([$rating, $comment, $reviewId, $user['id']]);
-        $select = db()->prepare('SELECT * FROM reviews WHERE id = ? AND student_id = ?');
-        $select->execute([$reviewId, $user['id']]);
-        $review = $select->fetch();
-        if (!$review) {
-            throw new ApiError(404, 'Nie znaleziono Twojej opinii.');
-        }
-        sendJson(200, ['review' => cleanReview($review, 'Ty')]);
-    }
-
-    if ($method === 'GET' && $path === '/api/zoom/status') {
-        $user = requireUser();
-        $tutor = ownedTutor($user);
-        $statement = db()->prepare('SELECT COUNT(*) FROM zoom_connections WHERE user_id = ?');
-        $statement->execute([$user['id']]);
-        sendJson(200, [
-            'connected' => (int)$statement->fetchColumn() > 0,
-            'configured' => zoomConfigured(),
-            'hasProfilePhoto' => (bool)$tutor['image_path'],
-        ]);
-    }
-    if ($method === 'GET' && $path === '/api/zoom/connect') {
-        $user = requireUser();
-        requireRole($user, 'tutor');
-        if (!zoomConfigured()) {
-            throw new ApiError(503, 'Uzupełnij konfigurację OAuth Zoom w api/config.local.php.');
-        }
-        $state = bin2hex(random_bytes(32));
-        storeOAuthState($state, (string)$user['id'], 'connect', 'tutor', '/profile?zoom=connected');
-        redirectTo(zoomAuthorizationUrl($state));
-    }
-    if ($method === 'GET' && $path === '/api/zoom/login') {
-        throw new ApiError(410, 'Logowanie przez Zoom nie jest już obsługiwane. Użyj adresu e-mail i hasła.');
-    }
-    if ($method === 'GET' && $path === '/api/zoom/register') {
-        throw new ApiError(410, 'Rejestracja przez Zoom nie jest już obsługiwana. Użyj formularza rejestracji.');
+        sendJson(200, ['bookings' => $bookings]);
     }
 
     throw new ApiError(404, 'Nie znaleziono endpointu API.');
@@ -1534,6 +1213,9 @@ try {
     sendJson($error->status, ['error' => $error->getMessage()]);
 } catch (PDOException $error) {
     error_log('Błąd bazy danych Tutorland: ' . $error->getMessage());
+    if (in_array((string)$error->getCode(), ['42S02', '42S22'], true)) {
+        sendJson(503, ['error' => 'Schemat bazy danych jest niekompletny. Utwórz nową bazę i zaimportuj kompletny plik tutorland-database.sql.']);
+    }
     sendJson(500, ['error' => 'Wystąpił błąd bazy danych. Sprawdź konfigurację i schemat MySQL.']);
 } catch (Throwable $error) {
     error_log('Błąd API Tutorland: ' . $error->getMessage());

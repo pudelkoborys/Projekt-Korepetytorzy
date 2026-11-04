@@ -1,9 +1,10 @@
--- Import this file into the MySQL database selected in phpMyAdmin.
--- It deliberately does not create a database or contain hosting credentials.
+-- Complete schema for a new, empty Tutorland database.
+-- Select the newly created database in phpMyAdmin before importing this file.
+-- This file does not create/drop the database or contain hosting credentials.
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';
 
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
   id CHAR(36) NOT NULL,
   role ENUM('student', 'tutor') NOT NULL,
   first_name VARCHAR(80) NOT NULL,
@@ -18,7 +19,15 @@ CREATE TABLE IF NOT EXISTS users (
   KEY ix_users_role (role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS tutor_profiles (
+CREATE TABLE user_profile_photos (
+  user_id CHAR(36) NOT NULL,
+  image_data MEDIUMTEXT NOT NULL,
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_profile_photos_user FOREIGN KEY (user_id)
+    REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE tutor_profiles (
   tutor_id VARCHAR(100) NOT NULL,
   user_id CHAR(36) NOT NULL,
   age TINYINT UNSIGNED NULL,
@@ -32,7 +41,7 @@ CREATE TABLE IF NOT EXISTS tutor_profiles (
     REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS tutor_subjects (
+CREATE TABLE tutor_subjects (
   tutor_id VARCHAR(100) NOT NULL,
   subject VARCHAR(80) NOT NULL,
   PRIMARY KEY (tutor_id, subject),
@@ -40,7 +49,7 @@ CREATE TABLE IF NOT EXISTS tutor_subjects (
     REFERENCES tutor_profiles (tutor_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS subject_tags (
+CREATE TABLE subject_tags (
   name VARCHAR(80) NOT NULL,
   PRIMARY KEY (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -55,7 +64,7 @@ INSERT IGNORE INTO subject_tags (name) VALUES
   ('Rachunek Różniczkowy'), ('Elektrotechnika'), ('Mechanika'), ('Astronomia'),
   ('Muzyka'), ('Plastyka'), ('Religia'), ('Etyka'), ('Łacina');
 
-CREATE TABLE IF NOT EXISTS tutor_levels (
+CREATE TABLE tutor_levels (
   tutor_id VARCHAR(100) NOT NULL,
   level ENUM('primary', 'secondary', 'tertiary') NOT NULL,
   PRIMARY KEY (tutor_id, level),
@@ -63,7 +72,7 @@ CREATE TABLE IF NOT EXISTS tutor_levels (
     REFERENCES tutor_profiles (tutor_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS tutor_availability (
+CREATE TABLE tutor_availability (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   tutor_id VARCHAR(100) NOT NULL,
   weekday TINYINT UNSIGNED NOT NULL,
@@ -75,7 +84,7 @@ CREATE TABLE IF NOT EXISTS tutor_availability (
     REFERENCES tutor_profiles (tutor_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS tutor_days_off (
+CREATE TABLE tutor_days_off (
   tutor_id VARCHAR(100) NOT NULL,
   day_off DATE NOT NULL,
   PRIMARY KEY (tutor_id, day_off),
@@ -83,7 +92,17 @@ CREATE TABLE IF NOT EXISTS tutor_days_off (
     REFERENCES tutor_profiles (tutor_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS bookings (
+CREATE TABLE tutor_day_availability (
+  tutor_id VARCHAR(100) NOT NULL,
+  lesson_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  PRIMARY KEY (tutor_id, lesson_date),
+  CONSTRAINT fk_day_availability_tutor FOREIGN KEY (tutor_id)
+    REFERENCES tutor_profiles (tutor_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE bookings (
   id CHAR(36) NOT NULL,
   tutor_id VARCHAR(100) NOT NULL,
   student_id CHAR(36) NOT NULL,
@@ -93,11 +112,6 @@ CREATE TABLE IF NOT EXISTS bookings (
   duration_minutes TINYINT UNSIGNED NOT NULL DEFAULT 40,
   subject VARCHAR(80) NOT NULL,
   education_level ENUM('primary', 'secondary', 'tertiary') NOT NULL,
-  zoom_status ENUM('pending', 'ready', 'failed') NOT NULL DEFAULT 'pending',
-  zoom_meeting_id VARCHAR(64) NOT NULL DEFAULT '',
-  zoom_join_url VARCHAR(2048) NOT NULL DEFAULT '',
-  zoom_start_url VARCHAR(2048) NOT NULL DEFAULT '',
-  zoom_error VARCHAR(500) NOT NULL DEFAULT '',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY ix_bookings_tutor_date (tutor_id, lesson_date, start_time),
@@ -108,28 +122,36 @@ CREATE TABLE IF NOT EXISTS bookings (
     REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS reviews (
+CREATE TABLE chat_conversations (
   id CHAR(36) NOT NULL,
   student_id CHAR(36) NOT NULL,
   tutor_id VARCHAR(100) NOT NULL,
-  booking_id CHAR(36) NOT NULL,
-  rating TINYINT UNSIGNED NOT NULL,
-  review_date DATE NOT NULL,
-  comment VARCHAR(2000) NOT NULL,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_reviews_student_tutor (student_id, tutor_id),
-  UNIQUE KEY uq_reviews_booking (booking_id),
-  KEY ix_reviews_tutor_date (tutor_id, review_date),
-  CONSTRAINT fk_reviews_student FOREIGN KEY (student_id)
+  UNIQUE KEY uq_chat_student_tutor (student_id, tutor_id),
+  KEY ix_chat_tutor_activity (tutor_id, created_at),
+  CONSTRAINT fk_chat_student FOREIGN KEY (student_id)
     REFERENCES users (id) ON DELETE CASCADE,
-  CONSTRAINT fk_reviews_tutor FOREIGN KEY (tutor_id)
-    REFERENCES tutor_profiles (tutor_id) ON DELETE CASCADE,
-  CONSTRAINT fk_reviews_booking FOREIGN KEY (booking_id)
-    REFERENCES bookings (id) ON DELETE CASCADE
+  CONSTRAINT fk_chat_tutor FOREIGN KEY (tutor_id)
+    REFERENCES tutor_profiles (tutor_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS sessions (
+CREATE TABLE chat_messages (
+  id CHAR(36) NOT NULL,
+  conversation_id CHAR(36) NOT NULL,
+  sender_id CHAR(36) NOT NULL,
+  message_type ENUM('user', 'booking_notice') NOT NULL DEFAULT 'user',
+  content VARCHAR(4000) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY ix_chat_messages_history (conversation_id, created_at, id),
+  CONSTRAINT fk_chat_message_conversation FOREIGN KEY (conversation_id)
+    REFERENCES chat_conversations (id) ON DELETE CASCADE,
+  CONSTRAINT fk_chat_message_sender FOREIGN KEY (sender_id)
+    REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE sessions (
   token_hash CHAR(64) NOT NULL,
   user_id CHAR(36) NOT NULL,
   expires_at DATETIME NOT NULL,
@@ -139,31 +161,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS oauth_states (
-  state_hash CHAR(64) NOT NULL,
-  user_id CHAR(36) NULL,
-  purpose ENUM('connect', 'login', 'register') NOT NULL,
-  role ENUM('student', 'tutor') NOT NULL,
-  return_to VARCHAR(2048) NOT NULL DEFAULT '/',
-  expires_at DATETIME NOT NULL,
-  PRIMARY KEY (state_hash),
-  KEY ix_oauth_states_expiry (expires_at),
-  CONSTRAINT fk_oauth_states_user FOREIGN KEY (user_id)
-    REFERENCES users (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS zoom_connections (
-  user_id CHAR(36) NOT NULL,
-  encrypted_tokens MEDIUMTEXT NOT NULL,
-  iv VARBINARY(16) NOT NULL,
-  auth_tag VARBINARY(16) NOT NULL,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (user_id),
-  CONSTRAINT fk_zoom_connections_user FOREIGN KEY (user_id)
-    REFERENCES users (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS login_attempts (
+CREATE TABLE login_attempts (
   ip_hash CHAR(64) NOT NULL,
   attempted_at DATETIME NOT NULL,
   KEY ix_login_attempts_ip_time (ip_hash, attempted_at)

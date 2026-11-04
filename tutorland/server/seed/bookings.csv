@@ -1,1 +1,1 @@
-id,tutorId,studentId,studentEmail,date,startTime,endTime,durationMinutes,subject,zoomStatus,zoomJoinUrl,zoomStartUrl
+id,tutorId,studentId,studentEmail,date,startTime,endTime,durationMinutes,subject,level

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,15 +9,15 @@ export const dataDirectory = resolve(process.env.TUTORLAND_DATA_DIR ?? join(serv
 const seedDirectory = join(serverDirectory, 'seed')
 
 export const csvHeaders = {
-  tutors: ['tutorId', 'firstName', 'lastName', 'age', 'teachingSinceYear', 'description', 'rating', 'pricePerLesson', 'levels', 'subjects', 'imagePath', 'email'],
+  tutors: ['tutorId', 'firstName', 'lastName', 'age', 'teachingSinceYear', 'description', 'pricePerLesson', 'levels', 'subjects', 'imagePath', 'email'],
   availability: ['tutorId', 'weekday', 'startTime', 'endTime'],
-  bookings: ['id', 'tutorId', 'studentId', 'studentEmail', 'date', 'startTime', 'endTime', 'durationMinutes', 'subject', 'level', 'zoomStatus', 'zoomJoinUrl', 'zoomStartUrl'],
-  reviews: ['id', 'studentId', 'studentEmail', 'tutorId', 'bookingId', 'rating', 'date', 'comment', 'updatedAt'],
-  users: ['id', 'role', 'firstName', 'lastName', 'email', 'passwordHash', 'tutorId', 'createdAt'],
+  bookings: ['id', 'tutorId', 'studentId', 'studentEmail', 'date', 'startTime', 'endTime', 'durationMinutes', 'subject', 'level'],
+  chats: ['id', 'studentId', 'tutorId', 'createdAt'],
+  chatMessages: ['id', 'chatId', 'senderId', 'messageType', 'content', 'createdAt'],
+  users: ['id', 'role', 'firstName', 'lastName', 'email', 'passwordHash', 'tutorId', 'createdAt', 'profileImage'],
   subjects: ['name'],
   sessions: ['tokenHash', 'userId', 'expiresAt'],
   daysOff: ['tutorId', 'date', 'startTime', 'endTime'],
-  oauthStates: ['stateHash', 'userId', 'purpose', 'role', 'returnTo', 'expiresAt'],
 }
 
 const queues = new Map()
@@ -41,15 +42,7 @@ export async function initializeStorage() {
     }
   }
 
-  const reviewPath = dataPath('reviews')
-  try {
-    await readFile(reviewPath)
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error
-    await writeCsv('reviews', [])
-  }
-
-  for (const name of ['users', 'sessions', 'daysOff', 'oauthStates']) {
+  for (const name of ['users', 'sessions', 'daysOff', 'chats', 'chatMessages']) {
     const path = dataPath(name)
     try {
       await readFile(path)
@@ -59,12 +52,24 @@ export async function initializeStorage() {
     }
   }
 
-  try {
-    await readFile(join(dataDirectory, 'zoom-connections.enc'))
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error
-    await writeFile(join(dataDirectory, 'zoom-connections.enc'), '{}\n', { mode: 0o600 })
-  }
+  const bookings = await readCsv('bookings')
+  await updateCsv('chats', async (chats) => {
+    const knownPairs = new Set(chats.map((chat) => `${chat.studentId}\0${chat.tutorId}`))
+    const createdAt = new Date().toISOString()
+    const added = []
+    for (const booking of bookings) {
+      const pair = `${booking.studentId}\0${booking.tutorId}`
+      if (knownPairs.has(pair)) continue
+      knownPairs.add(pair)
+      added.push({
+        id: randomUUID(),
+        studentId: booking.studentId,
+        tutorId: booking.tutorId,
+        createdAt,
+      })
+    }
+    return { records: [...chats, ...added], result: null }
+  })
 }
 
 function dataPath(name) {

@@ -39,7 +39,7 @@
 \colorbox{pale}{\parbox{\dimexpr\textwidth-2\fboxsep\relax}{\textbf{Jak czytać dokument}\\
 Mapa opisuje aktualne widoki aplikacji. Część formularzy i podsekcji jest stanem jednej strony; trasy są obsługiwane przez frontend React.}}\par
 \vspace{12mm}
-{\small\color{muted}Struktura oparta na zakresie produktu Tutorland: uczniowie i korepetytorzy, rezerwacje 40-minutowe i opinie.}
+{\small\color{muted}Struktura oparta na zakresie produktu Tutorland: uczniowie i korepetytorzy oraz rezerwacje 40-minutowe. System oceniania korepetytorów został usunięty.}
 \end{titlepage}
 
 \section{Strony publiczne}
@@ -49,7 +49,7 @@ Mapa opisuje aktualne widoki aplikacji. Część formularzy i podsekcji jest sta
 Nr & Strona / przykładowa trasa & Dostęp & Zawartość i działanie\\
 \midrule
 1 & Strona główna i katalog\newline \url{/} & Każdy & Karty profili, wyszukiwanie po imieniu i nazwisku, filtry przedmiotów i poziomów oraz stany ładowania i braku wyników. Uczeń pozostaje w katalogu po zalogowaniu.\\
-2 & Profil korepetytora\newline \url{/?tutor=:tutorId} & Każdy & Opis, przedmioty, poziomy, cena, oceny, opinie i dostępne terminy. Gość może przeglądać profil i terminy, ale rezerwacja wymaga konta ucznia.\\
+2 & Profil korepetytora\newline \url{/?tutor=:tutorId} & Każdy & Opis, przedmioty, poziomy, cena i dostępne terminy. Gość może przeglądać profil i terminy, ale rezerwacja wymaga konta ucznia.\\
 \bottomrule
 \end{tabularx}
 \normalsize
@@ -62,10 +62,9 @@ Nr & Strona / przykładowa trasa & Dostęp & Zawartość i działanie\\
 \midrule
 3 & Rejestracja\newline \url{/register} & Gość & Utworzenie konta e-mail/hasło z wyborem roli ucznia lub korepetytora oraz walidacją danych.\\
 4 & Logowanie\newline \url{/login} & Gość & Logowanie adresem e-mail i hasłem. Rola konta jest rozpoznawana automatycznie.\\
-5 & Lekcje i powiadomienia\newline \url{/notifications} & Uczeń / korepetytor & Własne nadchodzące i zakończone lekcje. Uczeń zarządza opiniami, korepetytor widzi rezerwacje i nowe opinie. Linki do spotkań nie są obecnie tworzone.\\
+5 & Lekcje i powiadomienia\newline \url{/notifications} & Uczeń / korepetytor & Własne nadchodzące i zakończone lekcje oraz linki do rozmów. Linki do spotkań nie są obecnie tworzone.\\
 6 & Panel profilu i dostępności\newline \url{/profile} & Korepetytor & Edycja własnego profilu, ceny, przedmiotów i poziomów; tygodniowe godziny przez suwaki, kalendarz rezerwacji i dni wolne na kolejny miesiąc.\\
-7 & Opinia\newline Formularz w \url{/notifications} & Uczeń po lekcji & Ocena 1–5 oraz komentarz. Jedna aktywna opinia na korepetytora; można ją edytować, usunąć i po usunięciu dodać ponownie.\\
-8 & Usunięcie konta\newline \url{/profile} & Uczeń / korepetytor & Trwałe usunięcie konta i powiązanych danych Tutorland.\\
+7 & Usunięcie konta\newline \url{/profile} & Uczeń / korepetytor & Trwałe usunięcie konta i powiązanych danych Tutorland.\\
 \bottomrule
 \end{tabularx}
 \normalsize
